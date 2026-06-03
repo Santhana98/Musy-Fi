@@ -421,7 +421,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
 
   return (
     <div 
-      className={`flex-1 overflow-y-auto px-8 py-6 pb-24 relative select-none bg-cover bg-center bg-no-repeat ${
+      className={`flex-1 overflow-y-auto px-4 md:px-8 py-6 pb-36 md:pb-24 relative select-none bg-cover bg-center bg-no-repeat ${
         isHome ? '' : 'bg-gradient-to-b from-zinc-900 to-bg-base'
       }`}
       style={isHome ? { backgroundImage: 'linear-gradient(to bottom, rgba(7, 7, 8, 0.65), rgba(7, 7, 8, 0.9)), url(/bg-home-sunset.jpg)' } : {}}
@@ -482,10 +482,10 @@ export default function MainView({ searchQuery }: MainViewProps) {
             ) : (
               <div className="space-y-1">
                 {/* Header row */}
-                <div className="grid grid-cols-[16px_1fr_120px_48px] gap-4 px-4 py-2 text-zinc-400 text-xs font-semibold uppercase border-b border-zinc-900">
+                <div className="grid grid-cols-[24px_1fr_auto] md:grid-cols-[16px_1fr_120px_48px] gap-2 md:gap-4 px-2 md:px-4 py-2 text-zinc-400 text-xs font-semibold uppercase border-b border-zinc-900">
                   <div>#</div>
                   <div>Title</div>
-                  <div>Source</div>
+                  <div className="hidden md:block">Source</div>
                   <div className="flex justify-end"><Clock className="w-4 h-4" /></div>
                 </div>
 
@@ -496,7 +496,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
                     <div
                       key={song.id}
                       onClick={() => playTrack(song, allSongs)}
-                      className={`grid grid-cols-[16px_1fr_120px_48px] gap-4 px-4 py-2.5 rounded-md items-center group cursor-pointer transition-colors ${
+                      className={`grid grid-cols-[24px_1fr_auto] md:grid-cols-[16px_1fr_120px_48px] gap-2 md:gap-4 px-2 md:px-4 py-2.5 rounded-md items-center group cursor-pointer transition-colors ${
                         isCurrent ? 'bg-zinc-800/40' : 'hover:bg-zinc-900/50'
                       }`}
                     >
@@ -533,8 +533,8 @@ export default function MainView({ searchQuery }: MainViewProps) {
                         </div>
                       </div>
 
-                      {/* Source tag */}
-                      <div className="text-xs font-semibold flex items-center gap-1.5 text-zinc-400 capitalize">
+                      {/* Source tag (hidden on mobile) */}
+                      <div className="hidden md:flex text-xs font-semibold items-center gap-1.5 text-zinc-400 capitalize">
                         {song.type === 'youtube' ? (
                           <span className="flex items-center gap-1 text-red-500 bg-red-950/20 px-2 py-0.5 rounded border border-red-900/30">
                             <Youtube className="w-3.5 h-3.5" />
@@ -554,16 +554,16 @@ export default function MainView({ searchQuery }: MainViewProps) {
                       </div>
 
                       {/* Controls / Time */}
-                      <div className="text-xs text-zinc-400 font-medium flex items-center justify-end gap-3">
+                      <div className="text-xs text-zinc-400 font-medium flex items-center justify-end gap-2 md:gap-3">
                         <button
                           onClick={(e) => handleLikeToggle(song.id, e)}
-                          className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-white transition-opacity"
+                          className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-zinc-400 hover:text-white transition-opacity p-1"
                         >
                           <Heart className="w-4 h-4" />
                         </button>
                         <button
                           onClick={(e) => handleDeleteSong(song.id, e)}
-                          className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-500 transition-opacity"
+                          className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-zinc-400 hover:text-red-500 transition-opacity p-1"
                           title="Delete song"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -734,10 +734,10 @@ export default function MainView({ searchQuery }: MainViewProps) {
             </div>
           ) : (
             <div className="space-y-1">
-              <div className="grid grid-cols-[16px_1fr_120px_48px] gap-4 px-4 py-2 text-zinc-400 text-xs font-semibold uppercase border-b border-zinc-900">
+              <div className="grid grid-cols-[24px_1fr_auto] md:grid-cols-[16px_1fr_120px_48px] gap-2 md:gap-4 px-2 md:px-4 py-2 text-zinc-400 text-xs font-semibold uppercase border-b border-zinc-900">
                 <div>#</div>
                 <div>Title</div>
-                <div>Source</div>
+                <div className="hidden md:block">Source</div>
                 <div className="flex justify-end"><Clock className="w-4 h-4" /></div>
               </div>
 
@@ -747,7 +747,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
                   <div
                     key={song.id}
                     onClick={() => playTrack(song, likedSongs)}
-                    className={`grid grid-cols-[16px_1fr_120px_48px] gap-4 px-4 py-2.5 rounded-md items-center group cursor-pointer transition-colors ${
+                    className={`grid grid-cols-[24px_1fr_auto] md:grid-cols-[16px_1fr_120px_48px] gap-2 md:gap-4 px-2 md:px-4 py-2.5 rounded-md items-center group cursor-pointer transition-colors ${
                       isCurrent ? 'bg-zinc-800/40' : 'hover:bg-zinc-900/50'
                     }`}
                   >
@@ -783,14 +783,14 @@ export default function MainView({ searchQuery }: MainViewProps) {
                       </div>
                     </div>
 
-                    <div className="text-xs text-zinc-400 capitalize">
+                    <div className="hidden md:flex text-xs text-zinc-400 capitalize">
                       {song.type === 'youtube' ? 'YouTube' : song.type === 'google' ? 'Google Drive' : 'Local File'}
                     </div>
 
-                    <div className="text-xs text-zinc-400 font-medium flex items-center justify-end gap-3">
+                    <div className="text-xs text-zinc-400 font-medium flex items-center justify-end gap-2 md:gap-3">
                       <button
                         onClick={(e) => handleLikeToggle(song.id, e)}
-                        className="text-spotify-green fill-spotify-green"
+                        className="text-spotify-green fill-spotify-green p-1"
                       >
                         <Heart className="w-4 h-4" />
                       </button>
@@ -873,10 +873,10 @@ export default function MainView({ searchQuery }: MainViewProps) {
                 </div>
               ) : (
                 <div className="space-y-1">
-                  <div className="grid grid-cols-[16px_1fr_120px_48px] gap-4 px-4 py-2 text-zinc-400 text-xs font-semibold uppercase border-b border-zinc-900">
+                  <div className="grid grid-cols-[24px_1fr_auto] md:grid-cols-[16px_1fr_120px_48px] gap-2 md:gap-4 px-2 md:px-4 py-2 text-zinc-400 text-xs font-semibold uppercase border-b border-zinc-900">
                     <div>#</div>
                     <div>Title</div>
-                    <div>Source</div>
+                    <div className="hidden md:block">Source</div>
                     <div className="flex justify-end"><Clock className="w-4 h-4" /></div>
                   </div>
 
@@ -886,7 +886,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
                       <div
                         key={song.id}
                         onClick={() => playTrack(song, playlistDetail.songs)}
-                        className={`grid grid-cols-[16px_1fr_120px_48px] gap-4 px-4 py-2.5 rounded-md items-center group cursor-pointer transition-colors ${
+                        className={`grid grid-cols-[24px_1fr_auto] md:grid-cols-[16px_1fr_120px_48px] gap-2 md:gap-4 px-2 md:px-4 py-2.5 rounded-md items-center group cursor-pointer transition-colors ${
                           isCurrent ? 'bg-zinc-800/40' : 'hover:bg-zinc-900/50'
                         }`}
                       >
@@ -922,20 +922,20 @@ export default function MainView({ searchQuery }: MainViewProps) {
                           </div>
                         </div>
 
-                        <div className="text-xs text-zinc-400 capitalize">
+                        <div className="hidden md:flex text-xs text-zinc-400 capitalize">
                           {song.type === 'youtube' ? 'YouTube' : song.type === 'google' ? 'Google Drive' : 'Local File'}
                         </div>
 
-                        <div className="text-xs text-zinc-400 font-medium flex items-center justify-end gap-3">
+                        <div className="text-xs text-zinc-400 font-medium flex items-center justify-end gap-2 md:gap-3">
                           <button
                             onClick={(e) => handleLikeToggle(song.id, e)}
-                            className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-white"
+                            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-zinc-400 hover:text-white p-1"
                           >
                             <Heart className={`w-4 h-4 ${song.isLiked ? 'text-spotify-green fill-spotify-green' : ''}`} />
                           </button>
                           <button
                             onClick={(e) => handleRemoveSongFromPlaylist(playlistDetail.id, song.id, e)}
-                            className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-500"
+                            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-zinc-400 hover:text-red-500 p-1"
                             title="Remove from playlist"
                           >
                             <Trash2 className="w-4 h-4" />

@@ -16,7 +16,9 @@ import {
   Minimize2, 
   Heart,
   Music,
-  Tv
+  Tv,
+  ChevronDown,
+  Disc
 } from 'lucide-react';
 
 // Dynamically import ReactPlayer with SSR disabled since it uses window/navigator APIs
@@ -43,6 +45,7 @@ export default function MusicPlayer() {
   const [isMuted, setIsMuted] = useState(false);
   const [prevVolume, setPrevVolume] = useState(volume);
   const [isSeeking, setIsSeeking] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
@@ -218,62 +221,210 @@ export default function MusicPlayer() {
         </div>
       )}
 
-      {/* Bottom Control Bar Layout */}
-      <div className="fixed bottom-14 md:bottom-0 left-0 right-0 h-20 md:h-24 bg-zinc-950/95 border-t border-zinc-900 px-4 md:px-6 flex items-center justify-between select-none z-30 backdrop-blur-lg">
+      {/* Fullscreen Mobile Player Overlay */}
+      {isExpanded && (
+        <div className="fixed inset-0 bg-zinc-950/98 backdrop-blur-2xl z-50 md:hidden flex flex-col justify-between px-6 py-8 select-none text-white animate-slide-up">
+          
+          {/* Top Header bar */}
+          <div className="flex items-center justify-between">
+            <button 
+              onClick={() => setIsExpanded(false)} 
+              className="p-2.5 bg-zinc-900/60 hover:bg-zinc-800 rounded-full border border-zinc-800/40"
+            >
+              <ChevronDown className="w-6 h-6 text-zinc-400" />
+            </button>
+            <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Now Playing</span>
+            <div className="w-11"></div> {/* Alignment spacer */}
+          </div>
+
+          {/* Large Rotating Cover Disc */}
+          <div className="flex-1 flex flex-col items-center justify-center my-8">
+            <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-full overflow-hidden shadow-[0_0_50px_rgba(214,40,40,0.15)] border border-zinc-850 flex items-center justify-center bg-zinc-900">
+              <img 
+                src={currentTrack.thumbnail || '/assets/images/18.jpg'} 
+                alt={currentTrack.title} 
+                className={`w-full h-full object-cover transition-transform duration-[20000ms] ease-linear ${isPlaying ? 'animate-spin' : ''}`}
+                style={{ borderRadius: '50%' }}
+                onError={(e) => {
+                  e.currentTarget.src = '/assets/images/18.jpg';
+                }}
+              />
+              {/* Inner Hole for Vinyl Disk look */}
+              <div className="absolute w-14 h-14 bg-zinc-950 border-4 border-zinc-900 rounded-full shadow-inner z-10 flex items-center justify-center">
+                <div className="w-3.5 h-3.5 bg-zinc-800 rounded-full"></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Track Details */}
+          <div className="space-y-1 mb-4">
+            <div className="flex items-center justify-between">
+              <div className="max-w-[80%]">
+                <h2 className="text-2xl font-black text-white truncate tracking-tight">{currentTrack.title}</h2>
+                <p className="text-base text-zinc-400 font-semibold truncate mt-0.5">{currentTrack.artist}</p>
+              </div>
+              <button className="text-zinc-400 hover:text-white p-2">
+                <Heart className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile Seek Slider */}
+          <div className="space-y-3 mb-6">
+            <input
+              type="range"
+              min={0}
+              max={duration || 0}
+              step={0.1}
+              value={progress}
+              onChange={handleSeekChange}
+              onMouseUp={handleSeekEnd}
+              onTouchEnd={handleSeekEnd}
+              className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-spotify-green focus:outline-none"
+            />
+            <div className="flex justify-between text-xs text-zinc-500 font-bold uppercase tracking-wider">
+              <span>{formatTime(progress)}</span>
+              <span>{formatTime(duration)}</span>
+            </div>
+          </div>
+
+          {/* Expanded Playback Controls */}
+          <div className="flex items-center justify-between px-2 mb-4">
+            <button 
+              onClick={() => setPlaybackMode(playbackMode === 'shuffle' ? 'normal' : 'shuffle')}
+              className={`p-3 transition-colors ${playbackMode === 'shuffle' ? 'text-spotify-green' : 'text-zinc-500'}`}
+            >
+              <Shuffle className="w-5 h-5" />
+            </button>
+
+            <button onClick={prevTrack} className="p-3 text-zinc-300">
+              <SkipBack className="w-7 h-7 fill-current" />
+            </button>
+
+            <button 
+              onClick={togglePlay} 
+              className="w-16 h-16 bg-white rounded-full text-black flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-transform"
+            >
+              {isPlaying ? (
+                <Pause className="w-6 h-6 fill-black" />
+              ) : (
+                <Play className="w-6 h-6 fill-black ml-1" />
+              )}
+            </button>
+
+            <button onClick={nextTrack} className="p-3 text-zinc-300">
+              <SkipForward className="w-7 h-7 fill-current" />
+            </button>
+
+            <button 
+              onClick={() => setPlaybackMode(playbackMode === 'repeat' ? 'normal' : 'repeat')}
+              className={`p-3 transition-colors ${playbackMode === 'repeat' ? 'text-spotify-green' : 'text-zinc-500'}`}
+            >
+              <Repeat className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Control Bar Layout (Mini-player on mobile, standard on desktop) */}
+      <div 
+        onClick={() => setIsExpanded(true)}
+        className="fixed bottom-14 md:bottom-0 left-0 right-0 h-20 md:h-24 bg-zinc-950/95 border-t border-zinc-900 px-4 md:px-6 flex items-center justify-between select-none z-30 backdrop-blur-lg cursor-pointer md:cursor-default"
+      >
+        
+        {/* Thin progress bar visible only on mobile top-edge when collapsed */}
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-zinc-900 md:hidden">
+          <div 
+            className="bg-spotify-green h-full transition-all duration-300"
+            style={{ width: `${duration ? (progress / duration) * 100 : 0}%` }}
+          ></div>
+        </div>
         
         {/* Left Side: Active Track Metadata */}
         <div className="flex items-center gap-2 md:gap-4 w-[60%] md:w-[30%] min-w-[140px] md:min-w-[180px]">
-          <div className="w-12 h-12 md:w-16 md:h-16 bg-zinc-900 rounded flex-shrink-0 flex items-center justify-center border border-zinc-800 overflow-hidden relative group">
+          <div className="w-10 h-10 md:w-16 md:h-16 bg-zinc-900 rounded flex-shrink-0 flex items-center justify-center border border-zinc-800 overflow-hidden relative group">
             {currentTrack.thumbnail ? (
               <img src={currentTrack.thumbnail} alt={currentTrack.title} className="w-full h-full object-cover" />
             ) : (
-              <Music className="w-6 h-6 text-zinc-500" />
+              <Music className="w-5 h-5 text-zinc-500" />
             )}
           </div>
-          <div className="truncate">
-            <h4 className="text-sm font-bold text-white truncate hover:underline cursor-pointer">{currentTrack.title}</h4>
-            <p className="text-xs text-zinc-400 truncate hover:underline cursor-pointer">{currentTrack.artist}</p>
+          <div className="truncate flex-1">
+            <h4 className="text-xs md:text-sm font-bold text-white truncate hover:underline">{currentTrack.title}</h4>
+            <p className="text-[10px] md:text-xs text-zinc-400 truncate hover:underline">{currentTrack.artist}</p>
           </div>
-          <button className="text-zinc-400 hover:text-white transition-colors">
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              // handle like toggle or just custom action
+            }}
+            className="text-zinc-400 hover:text-white transition-colors p-1"
+          >
             <Heart className="w-4 h-4" />
           </button>
         </div>
 
         {/* Center: Playback Core Controls & Seek Timeline */}
-        <div className="flex flex-col items-center gap-1 md:gap-2 flex-1 max-w-2xl px-2 md:px-4">
+        <div 
+          onClick={(e) => e.stopPropagation()}
+          className="flex flex-col items-center gap-1 md:gap-2 flex-1 max-w-2xl px-2 md:px-4"
+        >
           
           {/* Controls buttons row */}
           <div className="flex items-center gap-3 md:gap-5">
             <button 
-              onClick={() => setPlaybackMode(playbackMode === 'shuffle' ? 'normal' : 'shuffle')}
+              onClick={(e) => {
+                e.stopPropagation();
+                setPlaybackMode(playbackMode === 'shuffle' ? 'normal' : 'shuffle');
+              }}
               className={`hover:text-white transition-colors hidden md:block ${playbackMode === 'shuffle' ? 'text-spotify-green' : 'text-zinc-400'}`}
               title="Shuffle"
             >
               <Shuffle className="w-4 h-4" />
             </button>
             
-            <button onClick={prevTrack} className="text-zinc-400 hover:text-white transition-colors" title="Previous">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                prevTrack();
+              }}
+              className="text-zinc-400 hover:text-white transition-colors p-1" 
+              title="Previous"
+            >
               <SkipBack className="w-5 h-5 fill-zinc-400 hover:fill-white" />
             </button>
 
             <button
-              onClick={togglePlay}
-              className="bg-white hover:scale-105 p-3 rounded-full text-black transition-transform flex items-center justify-center"
+              onClick={(e) => {
+                e.stopPropagation();
+                togglePlay();
+              }}
+              className="bg-white hover:scale-105 p-2 md:p-3 rounded-full text-black transition-transform flex items-center justify-center"
               title={isPlaying ? 'Pause' : 'Play'}
             >
               {isPlaying ? (
-                <Pause className="w-5 h-5 fill-black" />
+                <Pause className="w-4.5 h-4.5 md:w-5 md:h-5 fill-black" />
               ) : (
-                <Play className="w-5 h-5 fill-black ml-0.5" />
+                <Play className="w-4.5 h-4.5 md:w-5 md:h-5 fill-black ml-0.5" />
               )}
             </button>
 
-            <button onClick={nextTrack} className="text-zinc-400 hover:text-white transition-colors" title="Next">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                nextTrack();
+              }}
+              className="text-zinc-400 hover:text-white transition-colors p-1" 
+              title="Next"
+            >
               <SkipForward className="w-5 h-5 fill-zinc-400 hover:fill-white" />
             </button>
 
             <button 
-              onClick={() => setPlaybackMode(playbackMode === 'repeat' ? 'normal' : 'repeat')}
+              onClick={(e) => {
+                e.stopPropagation();
+                setPlaybackMode(playbackMode === 'repeat' ? 'normal' : 'repeat');
+              }}
               className={`hover:text-white transition-colors hidden md:block ${playbackMode === 'repeat' ? 'text-spotify-green' : 'text-zinc-400'}`}
               title="Repeat"
             >
@@ -307,7 +458,10 @@ export default function MusicPlayer() {
         </div>
 
         {/* Right Side: Volume Controls & PiP video toggles */}
-        <div className="hidden md:flex items-center justify-end gap-3 w-[30%] min-w-[150px] text-zinc-400">
+        <div 
+          onClick={(e) => e.stopPropagation()}
+          className="hidden md:flex items-center justify-end gap-3 w-[30%] min-w-[150px] text-zinc-400"
+        >
 
           <button onClick={toggleMute} className="hover:text-white transition-colors" title="Mute/Unmute">
             {isMuted || volume === 0 ? (

@@ -21,11 +21,11 @@ export default function Header({ searchQuery = '', setSearchQuery }: HeaderProps
   const { activeView, setActiveView } = usePlayer();
 
   return (
-    <header className="glass-header h-16 flex items-center justify-between px-8 select-none z-10">
+    <header className="glass-header h-16 flex items-center justify-between px-4 md:px-8 select-none z-10">
       {/* Navigation History & Search Bar */}
-      <div className="flex items-center gap-6 flex-1">
+      <div className="flex items-center gap-4 md:gap-6 flex-1">
         {/* Navigation History Arrows */}
-        <div className="flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-2">
           <button 
             disabled 
             className="w-8 h-8 rounded-full bg-black/60 flex items-center justify-center text-zinc-500 cursor-not-allowed"
@@ -58,7 +58,7 @@ export default function Header({ searchQuery = '', setSearchQuery }: HeaderProps
       {/* User Session Profile controls */}
       <div className="flex items-center gap-4">
         {session ? (
-          <div className="flex items-center gap-3 bg-black/40 hover:bg-black/60 border border-zinc-900 rounded-full pl-2 pr-4 py-1.5 transition-all group relative cursor-pointer">
+          <div className="flex items-center gap-3 bg-black/40 hover:bg-black/60 border border-zinc-900 rounded-full pl-2 pr-2 sm:pr-4 py-1.5 transition-all group relative cursor-pointer">
             {session.user?.image ? (
               <img 
                 src={session.user.image} 
@@ -70,7 +70,7 @@ export default function Header({ searchQuery = '', setSearchQuery }: HeaderProps
                 <User className="w-4 h-4 text-zinc-400" />
               </div>
             )}
-            <span className="text-sm font-semibold text-zinc-200 group-hover:text-white truncate max-w-[120px]">
+            <span className="text-sm font-semibold text-zinc-200 group-hover:text-white truncate max-w-[120px] hidden sm:inline">
               {session.user?.name || session.user?.email}
             </span>
 
