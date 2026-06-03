@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+
+>>>>>>> 25b9e93445d0941a79b22aeb1d8eb40dd9439242
 # 🎧 Musi-Fi
 
 > **Your Music. Your Vibe.**  
@@ -43,3 +47,9 @@
    npm run dev
    ```
    Open [http://localhost:3000](http://localhost:3000) to start jamming! 🎶
+<<<<<<< HEAD
+=======
+```
+ 
+
+>>>>>>> 25b9e93445d0941a79b22aeb1d8eb40dd9439242
