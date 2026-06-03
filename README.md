@@ -47,6 +47,3 @@
 ```
  
 
-Your local repository is fully prepared, styled with your brand values (the bold **Musi-Fi red** and custom typography tags), and outfitted with a clean, high-impact `README.md` that is ready to present on GitHub! 
-
-Please let me know if you need any assistance when setting up your Supabase credentials or deploying your live site to Vercel!
