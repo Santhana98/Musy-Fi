@@ -4,7 +4,9 @@ import * as mm from 'music-metadata';
 import { getGoogleDriveClient, getOrCreateMusiFiFolder } from './gdrive';
 import { Readable } from 'stream';
 
-const LOCAL_STORAGE_DIR = path.join(process.cwd(), 'local_storage');
+const LOCAL_STORAGE_DIR = process.env.VERCEL
+  ? path.join('/tmp', 'local_storage')
+  : path.join(process.cwd(), 'local_storage');
 
 // Ensure local storage directory exists
 if (!fs.existsSync(LOCAL_STORAGE_DIR)) {
