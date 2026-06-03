@@ -199,21 +199,85 @@ export default function MainView({ searchQuery }: MainViewProps) {
 
     try {
       setUploading(true);
-      setUploadProgress(10);
+      setUploadProgress(5);
       
-      const formData = new FormData();
-      formData.append('file', file);
+      const accessToken = (session?.user as any)?.accessToken;
+      if (accessToken) {
+        // 1. Get the user's Google Drive Musi-Fi folder ID from backend
+        setUploadProgress(10);
+        const folderRes = await fetch('/api/songs/upload');
+        if (!folderRes.ok) {
+          throw new Error('Failed to get Google Drive folder ID');
+        }
+        const { folderId } = await folderRes.json();
 
-      setUploadProgress(40);
+        // 2. Initiate Google Drive Resumable Upload Session
+        setUploadProgress(15);
+        const initRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json; charset=UTF-8',
+            'X-Upload-Content-Type': file.type || 'audio/mpeg',
+            'X-Upload-Content-Length': file.size.toString()
+          },
+          body: JSON.stringify({
+            name: file.name,
+            parents: [folderId]
+          })
+        });
 
-      const res = await fetch('/api/songs/upload', {
-        method: 'POST',
-        body: formData,
-      });
+        if (!initRes.ok) {
+          throw new Error('Failed to start Google Drive upload session');
+        }
 
-      setUploadProgress(80);
+        const uploadUrl = initRes.headers.get('Location');
+        if (!uploadUrl) {
+          throw new Error('Google did not return an upload URL');
+        }
 
-      if (res.ok) {
+        // 3. Perform Resumable Upload directly from browser with progress tracking
+        setUploadProgress(20);
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', uploadUrl);
+        xhr.setRequestHeader('Content-Range', `bytes 0-${file.size - 1}/${file.size}`);
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percent = Math.round((event.loaded / event.total) * 60) + 20; // 20% to 80%
+            setUploadProgress(percent);
+          }
+        };
+
+        const uploadPromise = new Promise((resolve, reject) => {
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve(JSON.parse(xhr.responseText));
+            } else {
+              reject(new Error(`Google Drive upload failed: ${xhr.statusText}`));
+            }
+          };
+          xhr.onerror = () => reject(new Error('Network error during Google Drive upload'));
+          xhr.send(file);
+        });
+
+        const googleFile = await uploadPromise as any;
+        const fileId = googleFile.id;
+
+        // 4. Confirm the upload with our backend server (saves to DB and parses ID3 tags)
+        setUploadProgress(85);
+        const confirmRes = await fetch('/api/songs/upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ fileId }),
+        });
+
+        if (!confirmRes.ok) {
+          throw new Error('Failed to register the uploaded file with the server');
+        }
+
         setUploadProgress(100);
         setTimeout(() => {
           setUploading(false);
@@ -221,14 +285,45 @@ export default function MainView({ searchQuery }: MainViewProps) {
           fetchAllSongs();
           setActiveView('home');
         }, 500);
+
       } else {
-        const data = await res.json();
-        alert(data.error || 'Upload failed');
-        setUploading(false);
+        // Fallback: Local upload for credentials login
+        // Hard Vercel Payload Limit Check (4.5 MB)
+        if (file.size > 4.5 * 1024 * 1024) {
+          alert('Vercel limits standard file uploads to 4.5MB. Please log in with Google to upload larger files directly to your Google Drive!');
+          setUploading(false);
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        setUploadProgress(40);
+
+        const res = await fetch('/api/songs/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        setUploadProgress(80);
+
+        if (res.ok) {
+          setUploadProgress(100);
+          setTimeout(() => {
+            setUploading(false);
+            setUploadProgress(0);
+            fetchAllSongs();
+            setActiveView('home');
+          }, 500);
+        } else {
+          const data = await res.json();
+          alert(data.error || 'Upload failed');
+          setUploading(false);
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error uploading file:', err);
-      alert('An error occurred during file upload.');
+      alert(err.message || 'An error occurred during file upload.');
       setUploading(false);
     }
   };
