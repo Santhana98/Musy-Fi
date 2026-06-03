@@ -7,10 +7,12 @@ import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import MainView from '@/components/MainView';
 import MusicPlayer from '@/components/MusicPlayer';
-import { Disc } from 'lucide-react';
+import { Disc, Home, Search, Heart, UploadCloud, Settings } from 'lucide-react';
+import { usePlayer } from '@/context/PlayerContext';
 
 export default function DashboardPage() {
   const { data: session, status } = useSession();
+  const { activeView, setActiveView } = usePlayer();
   const router = useRouter();
   
   // Search query state managed in the dashboard shell and shared between Header and MainView
@@ -55,6 +57,45 @@ export default function DashboardPage() {
 
       {/* Persistent Bottom Controls Bar */}
       <MusicPlayer />
+
+      {/* Mobile Bottom Navigation Bar */}
+      <div className="md:hidden bg-bg-sidebar border-t border-border-muted py-2 flex items-center justify-around z-20">
+        <button
+          onClick={() => setActiveView('home')}
+          className={`flex flex-col items-center gap-1 text-[10px] font-bold ${activeView === 'home' ? 'text-white' : 'text-zinc-400 hover:text-white'}`}
+        >
+          <Home className="w-5 h-5" />
+          <span>Home</span>
+        </button>
+        <button
+          onClick={() => setActiveView('search')}
+          className={`flex flex-col items-center gap-1 text-[10px] font-bold ${activeView === 'search' ? 'text-white' : 'text-zinc-400 hover:text-white'}`}
+        >
+          <Search className="w-5 h-5" />
+          <span>Search</span>
+        </button>
+        <button
+          onClick={() => setActiveView('liked-songs')}
+          className={`flex flex-col items-center gap-1 text-[10px] font-bold ${activeView === 'liked-songs' ? 'text-[#D62828]' : 'text-zinc-400 hover:text-white'}`}
+        >
+          <Heart className={`w-5 h-5 ${activeView === 'liked-songs' ? 'fill-red-500 text-red-500' : ''}`} />
+          <span>Liked</span>
+        </button>
+        <button
+          onClick={() => setActiveView('upload')}
+          className={`flex flex-col items-center gap-1 text-[10px] font-bold ${activeView === 'upload' ? 'text-white' : 'text-zinc-400 hover:text-white'}`}
+        >
+          <UploadCloud className="w-5 h-5" />
+          <span>Upload</span>
+        </button>
+        <button
+          onClick={() => setActiveView('settings')}
+          className={`flex flex-col items-center gap-1 text-[10px] font-bold ${activeView === 'settings' ? 'text-white' : 'text-zinc-400 hover:text-white'}`}
+        >
+          <Settings className="w-5 h-5" />
+          <span>Settings</span>
+        </button>
+      </div>
     </main>
   );
 }

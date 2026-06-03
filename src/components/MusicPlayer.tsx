@@ -219,11 +219,11 @@ export default function MusicPlayer() {
       )}
 
       {/* Bottom Control Bar Layout */}
-      <div className="fixed bottom-0 left-0 right-0 h-24 bg-zinc-950/95 border-t border-zinc-900 px-6 flex items-center justify-between select-none z-30 backdrop-blur-lg">
+      <div className="fixed bottom-14 md:bottom-0 left-0 right-0 h-20 md:h-24 bg-zinc-950/95 border-t border-zinc-900 px-4 md:px-6 flex items-center justify-between select-none z-30 backdrop-blur-lg">
         
         {/* Left Side: Active Track Metadata */}
-        <div className="flex items-center gap-4 w-[30%] min-w-[180px]">
-          <div className="w-16 h-16 bg-zinc-900 rounded flex-shrink-0 flex items-center justify-center border border-zinc-800 overflow-hidden relative group">
+        <div className="flex items-center gap-2 md:gap-4 w-[60%] md:w-[30%] min-w-[140px] md:min-w-[180px]">
+          <div className="w-12 h-12 md:w-16 md:h-16 bg-zinc-900 rounded flex-shrink-0 flex items-center justify-center border border-zinc-800 overflow-hidden relative group">
             {currentTrack.thumbnail ? (
               <img src={currentTrack.thumbnail} alt={currentTrack.title} className="w-full h-full object-cover" />
             ) : (
@@ -240,13 +240,13 @@ export default function MusicPlayer() {
         </div>
 
         {/* Center: Playback Core Controls & Seek Timeline */}
-        <div className="flex flex-col items-center gap-2 flex-1 max-w-2xl px-4">
+        <div className="flex flex-col items-center gap-1 md:gap-2 flex-1 max-w-2xl px-2 md:px-4">
           
           {/* Controls buttons row */}
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-3 md:gap-5">
             <button 
               onClick={() => setPlaybackMode(playbackMode === 'shuffle' ? 'normal' : 'shuffle')}
-              className={`hover:text-white transition-colors ${playbackMode === 'shuffle' ? 'text-spotify-green' : 'text-zinc-400'}`}
+              className={`hover:text-white transition-colors hidden md:block ${playbackMode === 'shuffle' ? 'text-spotify-green' : 'text-zinc-400'}`}
               title="Shuffle"
             >
               <Shuffle className="w-4 h-4" />
@@ -274,7 +274,7 @@ export default function MusicPlayer() {
 
             <button 
               onClick={() => setPlaybackMode(playbackMode === 'repeat' ? 'normal' : 'repeat')}
-              className={`hover:text-white transition-colors ${playbackMode === 'repeat' ? 'text-spotify-green' : 'text-zinc-400'}`}
+              className={`hover:text-white transition-colors hidden md:block ${playbackMode === 'repeat' ? 'text-spotify-green' : 'text-zinc-400'}`}
               title="Repeat"
             >
               <Repeat className="w-4 h-4" />
@@ -282,7 +282,7 @@ export default function MusicPlayer() {
           </div>
 
           {/* Progress Seek Slider */}
-          <div className="w-full flex items-center gap-3">
+          <div className="w-full hidden md:flex items-center gap-3">
             <span className="text-[10px] font-semibold text-zinc-400 w-8 text-right">
               {formatTime(progress)}
             </span>
@@ -307,7 +307,7 @@ export default function MusicPlayer() {
         </div>
 
         {/* Right Side: Volume Controls & PiP video toggles */}
-        <div className="flex items-center justify-end gap-3 w-[30%] min-w-[150px] text-zinc-400">
+        <div className="hidden md:flex items-center justify-end gap-3 w-[30%] min-w-[150px] text-zinc-400">
 
           <button onClick={toggleMute} className="hover:text-white transition-colors" title="Mute/Unmute">
             {isMuted || volume === 0 ? (
