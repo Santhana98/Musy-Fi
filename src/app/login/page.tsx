@@ -39,6 +39,27 @@ export default function LoginPage() {
     }
   }, [status, router]);
 
+  // Read URL search params for errors (like OAuthAccountNotLinked)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlError = params.get('error');
+      if (urlError) {
+        if (urlError === 'OAuthAccountNotLinked') {
+          setError('An account with this email already exists using a password. Next-Auth has now enabled linking; please try signing in with Google again to connect it.');
+        } else if (urlError === 'OAuthCallback') {
+          setError('Google authentication failed. Please try again or verify your settings.');
+        } else if (urlError === 'OAuthCreateAccount') {
+          setError('Could not create a user profile in the database. Please try again later.');
+        } else if (urlError === 'Callback') {
+          setError('An error occurred during the authentication callback.');
+        } else {
+          setError(urlError);
+        }
+      }
+    }
+  }, []);
+
   useEffect(() => {
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();

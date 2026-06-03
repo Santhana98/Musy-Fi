@@ -21,6 +21,7 @@ export const authOptions: NextAuthOptions = {
           prompt: "consent",
         },
       },
+      allowDangerousEmailAccountLinking: true,
     }),
     CredentialsProvider({
       name: "Credentials",
