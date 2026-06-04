@@ -6,38 +6,57 @@ let ytDlpBinaryPath: string | null = null;
 
 /**
  * Ensures that the yt-dlp binary is available on the local filesystem.
- * Downloads the binary from GitHub if it's missing (e.g. on Vercel startup).
+ * Packages the binary in the deployment to avoid runtime downloads and GitHub rate limit errors.
  */
 export async function getOrCreateYtDlpBinary(): Promise<string> {
   if (ytDlpBinaryPath && fs.existsSync(ytDlpBinaryPath)) {
     return ytDlpBinaryPath;
   }
 
-  const isVercel = !!process.env.VERCEL;
-  const dir = isVercel ? '/tmp' : path.join(process.cwd(), 'bin');
-  
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
   const name = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
-  const binPath = path.join(dir, name);
+  const bundledPath = path.join(process.cwd(), 'bin', name);
 
-  if (!fs.existsSync(binPath)) {
-    console.log(`Downloading yt-dlp binary to ${binPath}...`);
-    // yt-dlp-wrap has static method to download from GitHub
-    // We use require to avoid any ESM/CJS default export mismatch issues
-    const YTDlpWrapClass = require('yt-dlp-wrap').default;
-    await YTDlpWrapClass.downloadFromGithub(binPath);
-    console.log('yt-dlp download complete.');
-    
-    if (process.platform !== 'win32') {
-      fs.chmodSync(binPath, '755');
+  // For non-Windows environments (like Linux/Vercel), we copy the binary to /tmp
+  // and explicitly set execute permissions (chmod 755) because workspace directories
+  // can be read-only or strip executable bits during Vercel deployment packaging.
+  if (process.platform !== 'win32') {
+    const tmpPath = path.join('/tmp', name);
+    if (!fs.existsSync(tmpPath)) {
+      console.log(`Setting up serverless executable: copying ${bundledPath} to ${tmpPath}`);
+      if (fs.existsSync(bundledPath)) {
+        fs.copyFileSync(bundledPath, tmpPath);
+        fs.chmodSync(tmpPath, '755');
+        console.log('Serverless executable setup complete.');
+      } else {
+        console.warn(`Bundled binary not found at ${bundledPath}. Falling back to GitHub download...`);
+        const YTDlpWrapClass = require('yt-dlp-wrap').default;
+        await YTDlpWrapClass.downloadFromGithub(tmpPath);
+        fs.chmodSync(tmpPath, '755');
+      }
     }
+    ytDlpBinaryPath = tmpPath;
+    return tmpPath;
   }
 
-  ytDlpBinaryPath = binPath;
-  return binPath;
+  // Windows Local Development
+  if (fs.existsSync(bundledPath)) {
+    ytDlpBinaryPath = bundledPath;
+    return bundledPath;
+  }
+
+  const localBinDir = path.join(process.cwd(), 'bin');
+  if (!fs.existsSync(localBinDir)) {
+    fs.mkdirSync(localBinDir, { recursive: true });
+  }
+  const fallbackPath = path.join(localBinDir, name);
+  if (!fs.existsSync(fallbackPath)) {
+    console.log(`Downloading fallback binary to ${fallbackPath}...`);
+    const YTDlpWrapClass = require('yt-dlp-wrap').default;
+    await YTDlpWrapClass.downloadFromGithub(fallbackPath);
+  }
+  
+  ytDlpBinaryPath = fallbackPath;
+  return fallbackPath;
 }
 
 /**
