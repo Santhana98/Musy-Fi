@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import { Readable } from 'stream';
 import ytdl from '@distube/ytdl-core';
+import { getYtDlpDirectUrl } from '@/lib/ytdlp';
 
 export async function GET(request: NextRequest) {
   try {
@@ -46,7 +47,6 @@ export async function GET(request: NextRequest) {
 
     if (song.type === 'youtube') {
       try {
-        const { getYtDlpDirectUrl } = require('@/lib/ytdlp');
         const videoUrl = `https://www.youtube.com/watch?v=${song.sourceUrl}`;
         const directUrl = await getYtDlpDirectUrl(videoUrl);
 
@@ -60,13 +60,19 @@ export async function GET(request: NextRequest) {
         const response = await fetch(directUrl, { headers });
 
         const responseHeaders = new Headers();
-        response.headers.forEach((v, k) => {
-          if (!['connection', 'transfer-encoding', 'content-encoding'].includes(k.toLowerCase())) {
-            responseHeaders.set(k, v);
-          }
-        });
-        
-        responseHeaders.set('Content-Type', 'audio/webm');
+        responseHeaders.set('Content-Type', 'audio/mp4');
+        responseHeaders.set('Accept-Ranges', 'bytes');
+        responseHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+        const contentRange = response.headers.get('content-range');
+        if (contentRange) {
+          responseHeaders.set('Content-Range', contentRange);
+        }
+
+        const contentLength = response.headers.get('content-length');
+        if (contentLength) {
+          responseHeaders.set('Content-Length', contentLength);
+        }
         
         return new Response(response.body, {
           status: response.status,
