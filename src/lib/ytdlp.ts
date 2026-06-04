@@ -74,7 +74,7 @@ export async function getYtDlpMetadata(videoUrl: string): Promise<any> {
 export async function getYtDlpDirectUrl(videoUrl: string): Promise<string> {
   const binaryPath = await getOrCreateYtDlpBinary();
   const ytDlp = new YTDlpWrap(binaryPath);
-  const stdout = await ytDlp.execPromise([videoUrl, '-g', '-f', 'ba']);
+  const stdout = await ytDlp.execPromise([videoUrl, '-g', '-f', 'ba[ext=m4a]/ba']);
   return stdout.trim();
 }
 
@@ -84,6 +84,6 @@ export async function getYtDlpDirectUrl(videoUrl: string): Promise<string> {
 export async function getYtDlpAudioStream(videoUrl: string): Promise<any> {
   const binaryPath = await getOrCreateYtDlpBinary();
   const ytDlp = new YTDlpWrap(binaryPath);
-  // Command: -f ba -o - (download best audio to stdout stream)
-  return ytDlp.execStream([videoUrl, '-f', 'ba', '-o', '-']);
+  // Command: -f ba[ext=m4a]/ba -o - (download best audio in m4a container to stdout stream)
+  return ytDlp.execStream([videoUrl, '-f', 'ba[ext=m4a]/ba', '-o', '-']);
 }
