@@ -66,6 +66,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
   const [linkTitle, setLinkTitle] = useState('');
   const [linkArtist, setLinkArtist] = useState('');
   const [linkLoading, setLinkLoading] = useState(false);
+  const [linkImportStatus, setLinkImportStatus] = useState('');
 
   // Dynamic playlists dropdown inside song rows
   const [activeDropdownRow, setActiveDropdownRow] = useState<string | null>(null);
@@ -333,8 +334,28 @@ export default function MainView({ searchQuery }: MainViewProps) {
     e.preventDefault();
     if (!linkUrl.trim()) return;
 
+    let statusInterval: NodeJS.Timeout | undefined;
+
     try {
       setLinkLoading(true);
+      setLinkImportStatus('Initiating secure cloud link... 🚀');
+      
+      let step = 0;
+      const steps = [
+        'Fetching video metadata... 🔍',
+        'Establishing connection to YouTube... ⚡',
+        'Downloading high-quality audio stream... 📥',
+        'Encoding and locking track into your cloud... 🔐',
+        'Syncing library and final setup... 🎧'
+      ];
+      
+      statusInterval = setInterval(() => {
+        if (step < steps.length - 1) {
+          step++;
+          setLinkImportStatus(steps[step]);
+        }
+      }, 2500);
+
       const res = await fetch('/api/songs/link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -359,7 +380,9 @@ export default function MainView({ searchQuery }: MainViewProps) {
       console.error(err);
       alert('An error occurred adding the URL link.');
     } finally {
+      if (statusInterval) clearInterval(statusInterval);
       setLinkLoading(false);
+      setLinkImportStatus('');
     }
   };
 
@@ -1096,7 +1119,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
                   className="bg-spotify-green hover:bg-spotify-green-hover disabled:bg-zinc-700 text-black font-semibold text-xs px-6 py-2.5 rounded-full transition-all w-full mt-4 flex items-center justify-center gap-2"
                 >
                   {linkLoading ? (
-                    <span>Adding track...</span>
+                    <span>{linkImportStatus || 'Locking this track into your cloud...'}</span>
                   ) : (
                     <>
                       <Youtube className="w-4 h-4" />
