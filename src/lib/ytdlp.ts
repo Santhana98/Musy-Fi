@@ -84,7 +84,7 @@ export async function getYtDlpDirectUrl(videoUrl: string): Promise<string> {
   console.log(`[Cache Miss] Resolving direct URL for ${videoUrl} using yt-dlp`);
   const binaryPath = await getOrCreateYtDlpBinary();
   const ytDlp = new YTDlpWrap(binaryPath);
-  const stdout = await ytDlp.execPromise([videoUrl, '-g', '-f', 'ba[ext=m4a]/ba']);
+  const stdout = await ytDlp.execPromise([videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba']);
   const url = stdout.trim();
 
   let expiresAt = now + 3 * 60 * 60 * 1000; // 3 hours fallback
@@ -108,6 +108,6 @@ export async function getYtDlpDirectUrl(videoUrl: string): Promise<string> {
 export async function getYtDlpAudioStream(videoUrl: string): Promise<any> {
   const binaryPath = await getOrCreateYtDlpBinary();
   const ytDlp = new YTDlpWrap(binaryPath);
-  // Command: -f ba[ext=m4a]/ba -o - (download best audio in m4a container to stdout stream)
-  return ytDlp.execStream([videoUrl, '-f', 'ba[ext=m4a]/ba', '-o', '-']);
+  // Command: -f 18/140/ba[ext=m4a]/ba -o - (download best progressive audio/video to stdout stream)
+  return ytDlp.execStream([videoUrl, '-f', '18/140/ba[ext=m4a]/ba', '-o', '-']);
 }
