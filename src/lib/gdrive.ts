@@ -14,42 +14,63 @@ export function getGoogleOAuth2Client() {
   return new google.auth.OAuth2(clientID, clientSecret, redirectUri);
 }
 
-export async function getGoogleDriveClient(userId: string) {
+export async function getGoogleDriveClient(userId: string, accessToken?: string) {
   const oauth2Client = getGoogleOAuth2Client();
   if (!oauth2Client) {
     return null;
   }
 
-  // Find the Google account associated with this user
-  const account = await prisma.account.findFirst({
-    where: {
-      userId,
-      provider: 'google',
-    },
-  });
+  let token = accessToken;
+  let refresh_token = undefined;
+  let account: any = null;
 
-  if (!account || !account.access_token) {
+  if (!token) {
+    // Find the Google account associated with this user
+    account = await prisma.account.findFirst({
+      where: {
+        userId,
+        provider: 'google',
+      },
+    });
+
+    if (account && account.access_token) {
+      token = account.access_token;
+      refresh_token = account.refresh_token || undefined;
+    }
+  }
+
+  if (!token) {
     return null;
   }
 
   oauth2Client.setCredentials({
-    access_token: account.access_token,
-    refresh_token: account.refresh_token || undefined,
+    access_token: token,
+    refresh_token: refresh_token,
   });
 
   // Setup token refresh callback if credentials refresh
   oauth2Client.on('tokens', async (tokens) => {
     if (tokens.access_token) {
-      await prisma.account.update({
-        where: {
-          id: account.id
-        },
-        data: {
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token || account.refresh_token,
-          expires_at: tokens.expiry_date ? Math.floor(tokens.expiry_date / 1000) : account.expires_at,
-        }
-      });
+      if (!account) {
+        account = await prisma.account.findFirst({
+          where: {
+            userId,
+            provider: 'google',
+          },
+        });
+      }
+      if (account) {
+        await prisma.account.update({
+          where: {
+            id: account.id
+          },
+          data: {
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token || account.refresh_token,
+            expires_at: tokens.expiry_date ? Math.floor(tokens.expiry_date / 1000) : account.expires_at,
+          }
+        });
+      }
     }
   });
 

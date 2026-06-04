@@ -56,7 +56,8 @@ export async function saveAudioFile(
   userId: string,
   fileName: string,
   buffer: Buffer,
-  mimeType: string
+  mimeType: string,
+  accessToken?: string
 ): Promise<{ sourceUrl: string; storageType: 'mp3' | 'google'; metadata: AudioMetadata }> {
   // Try parsing metadata first
   const metadata = await parseAudioMetadata(buffer, mimeType);
@@ -67,7 +68,7 @@ export async function saveAudioFile(
 
   // Attempt Google Drive upload
   try {
-    const drive = await getGoogleDriveClient(userId);
+    const drive = await getGoogleDriveClient(userId, accessToken);
     if (drive) {
       const folderId = await getOrCreateMusiFiFolder(drive);
       

@@ -39,6 +39,7 @@ export async function POST(request: Request) {
     }
 
     const userId = (session.user as any).id;
+    const accessToken = (session.user as any).accessToken;
     const contentType = request.headers.get('content-type') || '';
 
     // Case 1: Direct Google Drive upload confirmation
@@ -128,7 +129,7 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(arrayBuffer);
 
     // Save locally or to Google Drive if credentials exist
-    const uploadResult = await saveAudioFile(userId, file.name, buffer, file.type);
+    const uploadResult = await saveAudioFile(userId, file.name, buffer, file.type, accessToken);
 
     // Create DB entry for the Song
     const song = await prisma.song.create({

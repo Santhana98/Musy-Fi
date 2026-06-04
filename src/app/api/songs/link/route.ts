@@ -31,6 +31,7 @@ export async function POST(request: Request) {
     }
 
     const userId = (session.user as any).id;
+    const accessToken = (session.user as any).accessToken;
     const body = await request.json();
     const { url, title, artist } = body;
 
@@ -108,7 +109,8 @@ export async function POST(request: Request) {
             userId,
             `${cleanTitle}.m4a`,
             buffer,
-            'audio/mp4'
+            'audio/mp4',
+            accessToken
           );
           finalType = uploadResult.storageType;
           finalSourceUrl = uploadResult.sourceUrl;
