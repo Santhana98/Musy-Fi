@@ -50,7 +50,37 @@ export default function MusicPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
 
-  const isVideoTrack = currentTrack?.type === 'vimeo';
+  const isYouTubeTrack = currentTrack?.type === 'youtube';
+  const isVimeoTrack = currentTrack?.type === 'vimeo';
+  const isVideoTrack = isYouTubeTrack || isVimeoTrack;
+
+  const normalizeYouTubeUrl = (sourceUrl: string) => {
+    if (/^[a-zA-Z0-9_-]{11}$/.test(sourceUrl)) {
+      return `https://www.youtube.com/watch?v=${sourceUrl}`;
+    }
+
+    try {
+      const url = new URL(sourceUrl);
+      const videoId =
+        url.searchParams.get('v') ||
+        url.pathname.match(/\/(?:embed|shorts)\/([a-zA-Z0-9_-]{11})/)?.[1] ||
+        (url.hostname.includes('youtu.be') ? url.pathname.split('/').filter(Boolean)[0] : null);
+
+      return videoId ? `https://www.youtube.com/watch?v=${videoId}` : sourceUrl;
+    } catch {
+      return sourceUrl;
+    }
+  };
+
+  const seekTo = (seconds: number) => {
+    if (isVideoTrack && ytPlayerRef.current) {
+      ytPlayerRef.current.seekTo(seconds, 'seconds');
+    } else if (audioRef.current) {
+      audioRef.current.currentTime = seconds;
+    }
+
+    setProgress(seconds);
+  };
 
   // 1. Force reload audio source when track changes
   useEffect(() => {
@@ -67,7 +97,7 @@ export default function MusicPlayer() {
         console.warn('Initial play on track change interrupted:', err);
       });
     }
-  }, [currentTrack, isVideoTrack]);
+  }, [currentTrack, isVideoTrack, isPlaying]);
 
   // 2. Synchronize Play/Pause toggling
   useEffect(() => {
@@ -84,7 +114,7 @@ export default function MusicPlayer() {
         audioRef.current.pause();
       }
     }
-  }, [isPlaying]);
+  }, [isPlaying, isVideoTrack, currentTrack]);
 
   // 2. Volume synchronization
   useEffect(() => {
@@ -117,10 +147,7 @@ export default function MusicPlayer() {
     try {
       navigator.mediaSession.setActionHandler('seekto', (details) => {
         if (details.seekTime !== undefined) {
-          if (audioRef.current) {
-            audioRef.current.currentTime = details.seekTime;
-          }
-          setProgress(details.seekTime);
+          seekTo(details.seekTime);
         }
       });
     } catch (err) {
@@ -130,11 +157,8 @@ export default function MusicPlayer() {
     try {
       navigator.mediaSession.setActionHandler('seekbackward', (details) => {
         const offset = details.seekOffset || 10;
-        const target = Math.max(0, audioRef.current ? audioRef.current.currentTime - offset : progress - offset);
-        if (audioRef.current) {
-          audioRef.current.currentTime = target;
-        }
-        setProgress(target);
+        const current = audioRef.current && !isVideoTrack ? audioRef.current.currentTime : progress;
+        seekTo(Math.max(0, current - offset));
       });
     } catch (err) {
       console.warn('Media Session seekbackward not supported:', err);
@@ -143,11 +167,8 @@ export default function MusicPlayer() {
     try {
       navigator.mediaSession.setActionHandler('seekforward', (details) => {
         const offset = details.seekOffset || 10;
-        const target = Math.min(duration || 0, audioRef.current ? audioRef.current.currentTime + offset : progress + offset);
-        if (audioRef.current) {
-          audioRef.current.currentTime = target;
-        }
-        setProgress(target);
+        const current = audioRef.current && !isVideoTrack ? audioRef.current.currentTime : progress;
+        seekTo(Math.min(duration || 0, current + offset));
       });
     } catch (err) {
       console.warn('Media Session seekforward not supported:', err);
@@ -164,7 +185,7 @@ export default function MusicPlayer() {
         navigator.mediaSession.setActionHandler('seekforward', null);
       } catch (err) {}
     };
-  }, [currentTrack, duration, progress]);
+  }, [currentTrack, duration, progress, isVideoTrack]);
 
   // 4. Synchronize Playback State & Position with Media Session API dynamically
   useEffect(() => {
@@ -241,12 +262,7 @@ export default function MusicPlayer() {
     setIsSeeking(false);
     const value = parseFloat((e.target as HTMLInputElement).value);
     
-    if (isVideoTrack && ytPlayerRef.current) {
-      ytPlayerRef.current.seekTo(value);
-    } else if (audioRef.current) {
-      audioRef.current.currentTime = value;
-    }
-    setProgress(value);
+    seekTo(value);
   };
 
   // Toggle Mute Helper
@@ -294,12 +310,14 @@ export default function MusicPlayer() {
               ytPlayerRef.current = player;
             }}
             url={
-              currentTrack.type === 'youtube'
-                ? `https://www.youtube.com/watch?v=${currentTrack.sourceUrl}`
+              isYouTubeTrack
+                ? normalizeYouTubeUrl(currentTrack.sourceUrl)
                 : `https://vimeo.com/${currentTrack.sourceUrl}`
             }
             playing={isPlaying}
             volume={isMuted ? 0 : volume}
+            playsinline
+            muted={false}
             onProgress={handleVideoProgress}
             onDuration={handleVideoDuration}
             onEnded={handleVideoEnded}
@@ -309,11 +327,14 @@ export default function MusicPlayer() {
               youtube: {
                 playerVars: {
                   controls: 0,
+                  autoplay: 1,
                   modestbranding: 1,
                   rel: 0,
                   showinfo: 0,
                   iv_load_policy: 3,
-                  disablekb: 1
+                  disablekb: 1,
+                  enablejsapi: 1,
+                  playsinline: 1
                 },
               },
             }}
