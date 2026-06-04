@@ -123,6 +123,34 @@ export async function GET() {
           stderr: testRes.stderr.trim()
         });
       }
+
+      // Step 4: Test fetching community Cobalt instances list
+      try {
+        const trackerRes = await fetch('https://instances.cobalt.best/api/v1/instances');
+        if (trackerRes.ok) {
+          const list = await trackerRes.json();
+          const healthy = list.filter((inst: any) => inst.status === 'up' && inst.score >= 95);
+          diagnostics.steps.push({
+            name: 'Fetch Cobalt Tracker List',
+            status: 'SUCCESS',
+            count: list.length,
+            healthyCount: healthy.length,
+            sample: healthy.slice(0, 5).map((inst: any) => ({ url: inst.url, score: inst.score }))
+          });
+        } else {
+          diagnostics.steps.push({
+            name: 'Fetch Cobalt Tracker List',
+            status: 'FAILED',
+            details: `HTTP ${trackerRes.status}`
+          });
+        }
+      } catch (trackerErr: any) {
+        diagnostics.steps.push({
+          name: 'Fetch Cobalt Tracker List',
+          status: 'ERROR',
+          details: trackerErr.message
+        });
+      }
       
     } else {
       diagnostics.steps.push({
