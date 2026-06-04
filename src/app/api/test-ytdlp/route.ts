@@ -102,16 +102,28 @@ export async function GET() {
         stderr: versionRes.stderr.trim()
       });
 
-      // Step 3: Check basic network download/metadata resolution
+      // Step 3: Test different player clients to bypass bot detection
       const videoUrl = 'https://www.youtube.com/watch?v=tKZmHEyYlbA';
-      const metadataRes = await runCmd(testBinary, [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba']);
-      diagnostics.steps.push({
-        name: 'Resolve Direct URL (yt-dlp -g)',
-        status: metadataRes.code === 0 ? 'SUCCESS' : 'FAILED',
-        code: metadataRes.code,
-        stdout: metadataRes.stdout.trim(),
-        stderr: metadataRes.stderr.trim()
-      });
+      
+      const clientTests = [
+        { name: 'Default Client', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba'] },
+        { name: 'TV Client', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba', '--extractor-args', 'youtube:player_client=tv'] },
+        { name: 'Android Client', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba', '--extractor-args', 'youtube:player_client=android'] },
+        { name: 'iOS Client', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba', '--extractor-args', 'youtube:player_client=ios'] },
+        { name: 'mweb Client', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba', '--extractor-args', 'youtube:player_client=mweb'] },
+        { name: 'TV + iOS Client', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba', '--extractor-args', 'youtube:player_client=tv,ios'] }
+      ];
+
+      for (const test of clientTests) {
+        const testRes = await runCmd(testBinary, test.args);
+        diagnostics.steps.push({
+          name: `Test: ${test.name}`,
+          status: testRes.code === 0 ? 'SUCCESS' : 'FAILED',
+          code: testRes.code,
+          stdout: testRes.stdout.trim(),
+          stderr: testRes.stderr.trim()
+        });
+      }
       
     } else {
       diagnostics.steps.push({
