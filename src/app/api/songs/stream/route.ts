@@ -38,11 +38,45 @@ export async function GET(request: NextRequest) {
       return new NextResponse('Unauthorized to access this song', { status: 403 });
     }
 
-    if (song.type === 'youtube' || song.type === 'vimeo') {
-      return new NextResponse('Cannot stream video links directly', { status: 400 });
+    if (song.type === 'vimeo') {
+      return new NextResponse('Cannot stream Vimeo links directly', { status: 400 });
     }
 
     const range = request.headers.get('range');
+
+    if (song.type === 'youtube') {
+      try {
+        const { getYtDlpDirectUrl } = require('@/lib/ytdlp');
+        const videoUrl = `https://www.youtube.com/watch?v=${song.sourceUrl}`;
+        const directUrl = await getYtDlpDirectUrl(videoUrl);
+
+        const headers: Record<string, string> = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        };
+        if (range) {
+          headers['Range'] = range;
+        }
+
+        const response = await fetch(directUrl, { headers });
+
+        const responseHeaders = new Headers();
+        response.headers.forEach((v, k) => {
+          if (!['connection', 'transfer-encoding', 'content-encoding'].includes(k.toLowerCase())) {
+            responseHeaders.set(k, v);
+          }
+        });
+        
+        responseHeaders.set('Content-Type', 'audio/webm');
+        
+        return new Response(response.body, {
+          status: response.status,
+          headers: responseHeaders,
+        });
+      } catch (err: any) {
+        console.error('Failed to stream YouTube video:', err);
+        return new NextResponse(`Failed to stream YouTube: ${err.message}`, { status: 500 });
+      }
+    }
 
     if (song.type === 'google') {
       const drive = await getGoogleDriveClient(userId);

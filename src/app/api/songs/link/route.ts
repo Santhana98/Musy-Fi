@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import ytdl from '@distube/ytdl-core';
+import { saveAudioFile } from '@/lib/storage';
+import { getYtDlpMetadata, getYtDlpAudioStream } from '@/lib/ytdlp';
 
 // Helper to extract YouTube Video ID
 function getYoutubeId(url: string): string | null {
@@ -48,14 +49,14 @@ export async function POST(request: Request) {
       type = 'youtube';
       thumbnail = `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
       
-      // Try to fetch real YouTube metadata
+      // Try to fetch real YouTube metadata via yt-dlp
       try {
-        const info = await ytdl.getBasicInfo(url);
-        resolvedTitle = title || info.videoDetails.title || `YouTube Track (${ytId})`;
-        resolvedArtist = artist || info.videoDetails.author.name || 'YouTube';
-        resolvedDuration = parseInt(info.videoDetails.lengthSeconds || '0', 10);
+        const metadata = await getYtDlpMetadata(url);
+        resolvedTitle = title || metadata.title || `YouTube Track (${ytId})`;
+        resolvedArtist = artist || metadata.uploader || metadata.channel || 'YouTube';
+        resolvedDuration = metadata.duration || 0;
       } catch (err) {
-        console.warn('Could not fetch YouTube info via ytdl, falling back to defaults:', err);
+        console.warn('Could not fetch YouTube info via yt-dlp, falling back to defaults:', err);
         if (!title) resolvedTitle = `YouTube Track (${ytId})`;
         if (!artist) resolvedArtist = 'YouTube';
       }
@@ -76,13 +77,46 @@ export async function POST(request: Request) {
       );
     }
 
+    // Convert YouTube link to direct audio file on first link (where permitted and under 10 minutes)
+    let finalType = type;
+    let finalSourceUrl = videoId;
+
+    if (type === 'youtube' && resolvedDuration > 0 && resolvedDuration <= 600) {
+      try {
+        console.log(`Downloading YouTube audio stream to save on platform for videoId: ${videoId}`);
+        const stream = await getYtDlpAudioStream(url);
+        const chunks: Buffer[] = [];
+        for await (const chunk of stream) {
+          chunks.push(Buffer.from(chunk));
+        }
+        const buffer = Buffer.concat(chunks);
+        
+        if (buffer.length > 0) {
+          console.log(`Saving YouTube audio file to storage (${buffer.length} bytes)...`);
+          // Determine a clean file name
+          const cleanTitle = resolvedTitle.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const uploadResult = await saveAudioFile(
+            userId,
+            `${cleanTitle}.m4a`,
+            buffer,
+            'audio/mp4'
+          );
+          finalType = uploadResult.storageType;
+          finalSourceUrl = uploadResult.sourceUrl;
+          console.log(`YouTube audio successfully converted to standard file: type=${finalType}, sourceUrl=${finalSourceUrl}`);
+        }
+      } catch (downloadErr) {
+        console.warn('Could not convert YouTube video to direct file, falling back to linking original video URL:', downloadErr);
+      }
+    }
+
     // Save to DB
     const song = await prisma.song.create({
       data: {
         title: resolvedTitle,
         artist: resolvedArtist,
-        type,
-        sourceUrl: videoId,
+        type: finalType,
+        sourceUrl: finalSourceUrl,
         thumbnail,
         duration: resolvedDuration,
         userId,

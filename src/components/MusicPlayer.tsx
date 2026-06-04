@@ -50,7 +50,7 @@ export default function MusicPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
 
-  const isVideoTrack = currentTrack?.type === 'youtube' || currentTrack?.type === 'vimeo';
+  const isVideoTrack = currentTrack?.type === 'vimeo';
 
   // 1. Synchronize HTML5 Audio Element Play/Pause
   useEffect(() => {
@@ -73,7 +73,7 @@ export default function MusicPlayer() {
     }
   }, [volume, isMuted]);
 
-  // 3. Media Session API for background lockscreen controls
+  // 3. Media Session API for background lockscreen metadata and controls
   useEffect(() => {
     if (!currentTrack || typeof window === 'undefined' || !('mediaSession' in navigator)) return;
 
@@ -93,13 +93,78 @@ export default function MusicPlayer() {
     navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack());
     navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
 
+    try {
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined) {
+          if (audioRef.current) {
+            audioRef.current.currentTime = details.seekTime;
+          }
+          setProgress(details.seekTime);
+        }
+      });
+    } catch (err) {
+      console.warn('Media Session seekto not supported:', err);
+    }
+
+    try {
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        const offset = details.seekOffset || 10;
+        const target = Math.max(0, audioRef.current ? audioRef.current.currentTime - offset : progress - offset);
+        if (audioRef.current) {
+          audioRef.current.currentTime = target;
+        }
+        setProgress(target);
+      });
+    } catch (err) {
+      console.warn('Media Session seekbackward not supported:', err);
+    }
+
+    try {
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        const offset = details.seekOffset || 10;
+        const target = Math.min(duration || 0, audioRef.current ? audioRef.current.currentTime + offset : progress + offset);
+        if (audioRef.current) {
+          audioRef.current.currentTime = target;
+        }
+        setProgress(target);
+      });
+    } catch (err) {
+      console.warn('Media Session seekforward not supported:', err);
+    }
+
     return () => {
       navigator.mediaSession.setActionHandler('play', null);
       navigator.mediaSession.setActionHandler('pause', null);
       navigator.mediaSession.setActionHandler('nexttrack', null);
       navigator.mediaSession.setActionHandler('previoustrack', null);
+      try {
+        navigator.mediaSession.setActionHandler('seekto', null);
+        navigator.mediaSession.setActionHandler('seekbackward', null);
+        navigator.mediaSession.setActionHandler('seekforward', null);
+      } catch (err) {}
     };
-  }, [currentTrack]);
+  }, [currentTrack, duration, progress]);
+
+  // 4. Synchronize Playback State & Position with Media Session API dynamically
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('mediaSession' in navigator) || !currentTrack) return;
+
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+
+    try {
+      if ('setPositionState' in navigator.mediaSession) {
+        if (duration && duration > 0 && progress >= 0 && progress <= duration) {
+          navigator.mediaSession.setPositionState({
+            duration: duration,
+            playbackRate: 1,
+            position: progress,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Could not set mediaSession position state:', err);
+    }
+  }, [isPlaying, progress, duration, currentTrack]);
 
   if (!currentTrack) return null;
 
