@@ -5,6 +5,8 @@ import { prisma } from '@/lib/prisma';
 import { saveAudioFile } from '@/lib/storage';
 import { getYtDlpMetadata, getYtDlpAudioStream } from '@/lib/ytdlp';
 
+const MAX_BACKGROUND_IMPORT_SECONDS = 30 * 60;
+
 // Helper to extract YouTube Video ID
 function getYoutubeId(url: string): string | null {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -77,13 +79,18 @@ export async function POST(request: Request) {
       );
     }
 
-    // Convert YouTube link to direct audio file on first link (where permitted and under 10 minutes)
+    // Import YouTube links as real audio files first. This makes mobile background
+    // and lock-screen playback behave like uploaded songs when the import succeeds.
     let finalType = type;
     let finalSourceUrl = videoId;
+    let backgroundReady = false;
 
-    if (type === 'youtube' && resolvedDuration > 0 && resolvedDuration <= 600) {
+    if (
+      type === 'youtube' &&
+      (resolvedDuration === 0 || resolvedDuration <= MAX_BACKGROUND_IMPORT_SECONDS)
+    ) {
       try {
-        console.log(`Downloading YouTube audio stream to save on platform for videoId: ${videoId}`);
+        console.log(`Importing YouTube audio for background playback: ${videoId}`);
         const stream = await getYtDlpAudioStream(url);
         const chunks: Buffer[] = [];
         for await (const chunk of stream) {
@@ -103,11 +110,14 @@ export async function POST(request: Request) {
           );
           finalType = uploadResult.storageType;
           finalSourceUrl = uploadResult.sourceUrl;
-          console.log(`YouTube audio successfully converted to standard file: type=${finalType}, sourceUrl=${finalSourceUrl}`);
+          backgroundReady = true;
+          console.log(`YouTube audio imported for background playback: type=${finalType}, sourceUrl=${finalSourceUrl}`);
         }
       } catch (downloadErr) {
-        console.warn('Could not convert YouTube video to direct file, falling back to linking original video URL:', downloadErr);
+        console.warn('Could not import YouTube audio, falling back to embedded YouTube playback:', downloadErr);
       }
+    } else if (type === 'youtube') {
+      console.warn(`Skipping background import because duration is too long: ${resolvedDuration}s`);
     }
 
     // Save to DB
@@ -123,7 +133,7 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json({ success: true, song });
+    return NextResponse.json({ success: true, song, backgroundReady });
   } catch (error: any) {
     console.error('Error in link route:', error);
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
