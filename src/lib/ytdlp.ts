@@ -71,11 +71,35 @@ export async function getYtDlpMetadata(videoUrl: string): Promise<any> {
 /**
  * Extracts the direct audio streaming URL.
  */
+const directUrlCache = new Map<string, { url: string; expiresAt: number }>();
+
 export async function getYtDlpDirectUrl(videoUrl: string): Promise<string> {
+  const now = Date.now();
+  const cached = directUrlCache.get(videoUrl);
+  if (cached && cached.expiresAt > now) {
+    console.log(`[Cache Hit] Using cached direct URL for ${videoUrl}`);
+    return cached.url;
+  }
+
+  console.log(`[Cache Miss] Resolving direct URL for ${videoUrl} using yt-dlp`);
   const binaryPath = await getOrCreateYtDlpBinary();
   const ytDlp = new YTDlpWrap(binaryPath);
   const stdout = await ytDlp.execPromise([videoUrl, '-g', '-f', 'ba[ext=m4a]/ba']);
-  return stdout.trim();
+  const url = stdout.trim();
+
+  let expiresAt = now + 3 * 60 * 60 * 1000; // 3 hours fallback
+  try {
+    const urlObj = new URL(url);
+    const expireParam = urlObj.searchParams.get('expire');
+    if (expireParam) {
+      expiresAt = (parseInt(expireParam, 10) * 1000) - (5 * 60 * 1000); // 5 min safety buffer
+    }
+  } catch (err) {
+    console.warn('Could not parse expiration parameter from YouTube URL:', err);
+  }
+
+  directUrlCache.set(videoUrl, { url, expiresAt });
+  return url;
 }
 
 /**

@@ -52,18 +52,39 @@ export default function MusicPlayer() {
 
   const isVideoTrack = currentTrack?.type === 'vimeo';
 
-  // 1. Synchronize HTML5 Audio Element Play/Pause
+  // 1. Force reload audio source when track changes
+  useEffect(() => {
+    if (!audioRef.current || isVideoTrack || !currentTrack) return;
+    
+    try {
+      audioRef.current.load();
+    } catch (err) {
+      console.warn('Audio element load failed:', err);
+    }
+    
+    if (isPlaying) {
+      audioRef.current.play().catch(err => {
+        console.warn('Initial play on track change interrupted:', err);
+      });
+    }
+  }, [currentTrack, isVideoTrack]);
+
+  // 2. Synchronize Play/Pause toggling
   useEffect(() => {
     if (!audioRef.current || isVideoTrack || !currentTrack) return;
 
     if (isPlaying) {
-      audioRef.current.play().catch(err => {
-        console.warn('Audio play interrupted or requires user interaction:', err);
-      });
+      if (audioRef.current.paused) {
+        audioRef.current.play().catch(err => {
+          console.warn('Play trigger interrupted:', err);
+        });
+      }
     } else {
-      audioRef.current.pause();
+      if (!audioRef.current.paused) {
+        audioRef.current.pause();
+      }
     }
-  }, [isPlaying, currentTrack, isVideoTrack]);
+  }, [isPlaying]);
 
   // 2. Volume synchronization
   useEffect(() => {
@@ -183,6 +204,18 @@ export default function MusicPlayer() {
     nextTrack();
   };
 
+  const handleAudioCanPlay = () => {
+    if (isPlaying && audioRef.current && audioRef.current.paused) {
+      audioRef.current.play().catch(err => {
+        console.warn('Play attempt inside onCanPlay failed:', err);
+      });
+    }
+  };
+
+  const handleAudioError = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
+    console.error('HTML5 Audio error encountered:', e.currentTarget.error);
+  };
+
   // Handle YouTube/Video Callbacks
   const handleVideoProgress = (state: { playedSeconds: number }) => {
     if (isSeeking) return;
@@ -248,6 +281,8 @@ export default function MusicPlayer() {
           onTimeUpdate={handleAudioTimeUpdate}
           onLoadedMetadata={handleAudioLoadedMetadata}
           onEnded={handleAudioEnded}
+          onCanPlay={handleAudioCanPlay}
+          onError={handleAudioError}
         />
       )}
 
