@@ -107,11 +107,10 @@ export async function GET() {
       
       const clientTests = [
         { name: 'Default Client', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba'] },
+        { name: 'Force IPv4', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba', '-4'] },
+        { name: 'Force IPv6', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba', '-6'] },
         { name: 'TV Client', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba', '--extractor-args', 'youtube:player_client=tv'] },
-        { name: 'Android Client', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba', '--extractor-args', 'youtube:player_client=android'] },
-        { name: 'iOS Client', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba', '--extractor-args', 'youtube:player_client=ios'] },
-        { name: 'mweb Client', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba', '--extractor-args', 'youtube:player_client=mweb'] },
-        { name: 'TV + iOS Client', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba', '--extractor-args', 'youtube:player_client=tv,ios'] }
+        { name: 'TV Client + IPv6', args: [videoUrl, '-g', '-f', '18/140/ba[ext=m4a]/ba', '-6', '--extractor-args', 'youtube:player_client=tv'] }
       ];
 
       for (const test of clientTests) {
