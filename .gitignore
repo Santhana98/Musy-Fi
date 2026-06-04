@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# database
+/prisma/dev.db
+/prisma/dev.db-journal
+
+# local storage
+/local_storage/
+
+# scratch and test scripts
+scratch_*
+test_*.js
+test_import.js
