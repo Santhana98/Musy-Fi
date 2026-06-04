@@ -5,6 +5,8 @@ import { prisma } from '@/lib/prisma';
 import { saveAudioFile } from '@/lib/storage';
 import { getYtDlpMetadata, getYtDlpAudioStream } from '@/lib/ytdlp';
 
+export const maxDuration = 60;
+
 const MAX_BACKGROUND_IMPORT_SECONDS = 30 * 60;
 
 // Helper to extract YouTube Video ID

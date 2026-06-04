@@ -6,6 +6,8 @@ import { saveAudioFile, parseAudioMetadata } from '@/lib/storage';
 import { getGoogleDriveClient, getOrCreateMusiFiFolder } from '@/lib/gdrive';
 import path from 'path';
 
+export const maxDuration = 60;
+
 // GET: Returns the user's Musi-Fi Google Drive folder ID
 export async function GET() {
   try {

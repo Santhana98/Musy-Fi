@@ -1,6 +1,10 @@
 import YTDlpWrap from 'yt-dlp-wrap';
 import path from 'path';
 import fs from 'fs';
+import { spawn } from 'child_process';
+import os from 'os';
+import crypto from 'crypto';
+import { Readable } from 'stream';
 
 let ytDlpBinaryPath: string | null = null;
 
@@ -104,10 +108,55 @@ export async function getYtDlpDirectUrl(videoUrl: string): Promise<string> {
 
 /**
  * Returns a readable stream of the raw audio data from YouTube.
+ * Resolves by downloading the audio to a temporary file via native child_process spawn
+ * and returning a Readable file stream that cleans up the temporary file on close.
  */
-export async function getYtDlpAudioStream(videoUrl: string): Promise<any> {
+export async function getYtDlpAudioStream(videoUrl: string): Promise<Readable> {
   const binaryPath = await getOrCreateYtDlpBinary();
-  const ytDlp = new YTDlpWrap(binaryPath);
-  // Command: -f 18/140/ba[ext=m4a]/ba -o - (download best progressive audio/video to stdout stream)
-  return ytDlp.execStream([videoUrl, '-f', '18/140/ba[ext=m4a]/ba', '-o', '-']);
+  
+  // Use Vercel's /tmp dir if in serverless environment, otherwise OS default tmpdir
+  const tempDir = process.env.VERCEL ? '/tmp' : os.tmpdir();
+  const tempFileName = `ytdlp-${crypto.randomBytes(8).toString('hex')}.m4a`;
+  const tempFilePath = path.join(tempDir, tempFileName);
+
+  console.log(`[ytdlp] Downloading ${videoUrl} to temp file ${tempFilePath}`);
+
+  return new Promise((resolve, reject) => {
+    // Spawn yt-dlp to download directly to the temp file
+    const args = [videoUrl, '-f', '18/140/ba[ext=m4a]/ba', '-o', tempFilePath];
+    const proc = spawn(binaryPath, args);
+
+    let stderr = '';
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        console.log(`[ytdlp] Download complete. Creating readable stream for ${tempFilePath}`);
+        const stream = fs.createReadStream(tempFilePath);
+        
+        // Auto-cleanup temp file when stream is closed/finished
+        stream.on('close', () => {
+          fs.unlink(tempFilePath, (err) => {
+            if (err) {
+              console.error(`[ytdlp] Failed to delete temp file ${tempFilePath}:`, err);
+            } else {
+              console.log(`[ytdlp] Deleted temp file ${tempFilePath}`);
+            }
+          });
+        });
+
+        resolve(stream);
+      } else {
+        // Cleanup if temp file was partially created
+        if (fs.existsSync(tempFilePath)) {
+          try {
+            fs.unlinkSync(tempFilePath);
+          } catch (e) {}
+        }
+        reject(new Error(`yt-dlp process exited with code ${code}. Stderr: ${stderr}`));
+      }
+    });
+  });
 }
