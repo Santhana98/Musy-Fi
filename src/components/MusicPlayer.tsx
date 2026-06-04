@@ -46,13 +46,14 @@ export default function MusicPlayer() {
   const [prevVolume, setPrevVolume] = useState(volume);
   const [isSeeking, setIsSeeking] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [useVideoFallback, setUseVideoFallback] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
 
   const isYouTubeTrack = currentTrack?.type === 'youtube';
   const isVimeoTrack = currentTrack?.type === 'vimeo';
-  const isVideoTrack = isYouTubeTrack || isVimeoTrack;
+  const isVideoTrack = isVimeoTrack || (isYouTubeTrack && useVideoFallback);
 
   const normalizeYouTubeUrl = (sourceUrl: string) => {
     if (/^[a-zA-Z0-9_-]{11}$/.test(sourceUrl)) {
@@ -81,6 +82,10 @@ export default function MusicPlayer() {
 
     setProgress(seconds);
   };
+
+  useEffect(() => {
+    setUseVideoFallback(false);
+  }, [currentTrack?.id]);
 
   // 1. Force reload audio source when track changes
   useEffect(() => {
@@ -235,6 +240,9 @@ export default function MusicPlayer() {
 
   const handleAudioError = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
     console.error('HTML5 Audio error encountered:', e.currentTarget.error);
+    if (isYouTubeTrack) {
+      setUseVideoFallback(true);
+    }
   };
 
   // Handle YouTube/Video Callbacks
@@ -289,7 +297,7 @@ export default function MusicPlayer() {
 
   return (
     <>
-      {/* HTML5 Audio Player (MP3s) */}
+      {/* HTML5 Audio Player (MP3s, Google Drive, local files, and YouTube stream-first playback) */}
       {!isVideoTrack && currentTrack && (
         <audio
           ref={audioRef}
