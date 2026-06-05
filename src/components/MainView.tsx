@@ -198,6 +198,22 @@ export default function MainView({ searchQuery }: MainViewProps) {
     if (!files || files.length === 0) return;
     const file = files[0];
 
+    // Determine mime type dynamically to support MP3, WAV, M4A, AAC
+    const getMimeType = (fileName: string, fileType: string) => {
+      if (fileType && fileType.startsWith('audio/') && fileType !== 'audio/mpeg') {
+        return fileType;
+      }
+      const ext = fileName.split('.').pop()?.toLowerCase();
+      switch (ext) {
+        case 'mp3': return 'audio/mpeg';
+        case 'wav': return 'audio/wav';
+        case 'm4a': return 'audio/mp4';
+        case 'aac': return 'audio/aac';
+        default: return fileType || 'audio/mpeg';
+      }
+    };
+    const fileMimeType = getMimeType(file.name, file.type);
+
     try {
       setUploading(true);
       setUploadProgress(5);
@@ -219,7 +235,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json; charset=UTF-8',
-            'X-Upload-Content-Type': file.type || 'audio/mpeg',
+            'X-Upload-Content-Type': fileMimeType,
             'X-Upload-Content-Length': file.size.toString()
           },
           body: JSON.stringify({
@@ -1037,7 +1053,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
               <input
                 type="file"
                 ref={fileInputRef}
-                accept="audio/mp3, audio/mpeg"
+                accept="audio/*, .mp3, .wav, .m4a, .aac"
                 onChange={handleFileUpload}
                 className="hidden"
               />
@@ -1048,7 +1064,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">Upload Audio File</h3>
-                  <p className="text-xs text-zinc-500 mt-1 max-w-[200px] mx-auto">Supports standard MP3 formats. Uploads directly to Google Drive when connected.</p>
+                  <p className="text-xs text-zinc-500 mt-1 max-w-[200px] mx-auto">Supports standard MP3, WAV, M4A, and AAC formats. Uploads directly to Google Drive when connected.</p>
                 </div>
               </div>
 

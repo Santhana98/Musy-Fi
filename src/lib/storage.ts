@@ -171,11 +171,22 @@ export async function getAudioStream(
 
     const stat = await fs.promises.stat(filePath);
     const stream = fs.createReadStream(filePath);
+
+    // Dynamically resolve mimeType from the file extension
+    const ext = path.extname(sourceUrl).toLowerCase();
+    let mimeType = 'audio/mpeg';
+    if (ext === '.wav') {
+      mimeType = 'audio/wav';
+    } else if (ext === '.m4a') {
+      mimeType = 'audio/mp4';
+    } else if (ext === '.aac') {
+      mimeType = 'audio/aac';
+    }
     
     return {
       stream,
       size: stat.size,
-      mimeType: 'audio/mpeg', // standard MP3 default
+      mimeType,
     };
   }
 }

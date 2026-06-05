@@ -174,7 +174,17 @@ export async function GET(request: NextRequest) {
 
       const stat = await fs.promises.stat(filePath);
       const size = stat.size;
-      const mimeType = 'audio/mpeg';
+
+      // Dynamically resolve mimeType from the file extension
+      const ext = path.extname(song.sourceUrl).toLowerCase();
+      let mimeType = 'audio/mpeg';
+      if (ext === '.wav') {
+        mimeType = 'audio/wav';
+      } else if (ext === '.m4a') {
+        mimeType = 'audio/mp4';
+      } else if (ext === '.aac') {
+        mimeType = 'audio/aac';
+      }
 
       if (range) {
         const parts = range.replace(/bytes=/, '').split('-');

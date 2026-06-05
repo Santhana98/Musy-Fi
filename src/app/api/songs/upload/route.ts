@@ -116,7 +116,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    if (!file.type.startsWith('audio/')) {
+    let fileType = file.type;
+    if (!fileType || fileType === 'application/octet-stream') {
+      const ext = path.extname(file.name).toLowerCase();
+      if (ext === '.mp3') fileType = 'audio/mpeg';
+      else if (ext === '.wav') fileType = 'audio/wav';
+      else if (ext === '.m4a') fileType = 'audio/mp4';
+      else if (ext === '.aac') fileType = 'audio/aac';
+    }
+
+    if (!fileType.startsWith('audio/')) {
       return NextResponse.json({ error: 'Uploaded file must be an audio track' }, { status: 400 });
     }
 
@@ -129,7 +138,7 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(arrayBuffer);
 
     // Save locally or to Google Drive if credentials exist
-    const uploadResult = await saveAudioFile(userId, file.name, buffer, file.type, accessToken);
+    const uploadResult = await saveAudioFile(userId, file.name, buffer, fileType, accessToken);
 
     // Create DB entry for the Song
     const song = await prisma.song.create({
