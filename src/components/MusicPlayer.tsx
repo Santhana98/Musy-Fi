@@ -58,24 +58,31 @@ export default function MusicPlayer() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
+  const lastLoadedTrackIdRef = useRef<string>('');
 
   // Synchronize stream URL and next track preloading URL
   useEffect(() => {
     if (!currentTrack) {
       setStreamUrl('');
+      lastLoadedTrackIdRef.current = '';
       return;
     }
+    
+    // Only update streamUrl if the track actually changed.
+    // This prevents window focus session refreshes from resetting the audio src.
+    if (lastLoadedTrackIdRef.current === currentTrack.id && streamUrl) {
+      return;
+    }
+
     const token = (session?.user as any)?.id || '';
     const proxyUrl = `/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`;
+    const newUrl = currentTrack.type === 'google'
+      ? `https://lh3.googleusercontent.com/d/${currentTrack.sourceUrl}`
+      : proxyUrl;
 
-    if (currentTrack.type === 'google') {
-      // Direct CDN url for sub-second streaming
-      const cdnUrl = `https://lh3.googleusercontent.com/d/${currentTrack.sourceUrl}`;
-      setStreamUrl(cdnUrl);
-    } else {
-      setStreamUrl(proxyUrl);
-    }
-  }, [currentTrack, session]);
+    setStreamUrl(newUrl);
+    lastLoadedTrackIdRef.current = currentTrack.id;
+  }, [currentTrack, session, streamUrl]);
 
   useEffect(() => {
     if (queue.length === 0 || currentIndex === -1) {
@@ -315,9 +322,30 @@ export default function MusicPlayer() {
   };
 
   const handleAudioError = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
-    console.error('HTML5 Audio error encountered:', e.currentTarget.error);
+    const err = e.currentTarget.error;
+    console.error('HTML5 Audio error encountered:', err);
     
     if (currentTrack) {
+      // 1. Recover from transient network/aborted errors (code 1 or 2) commonly triggered when locking/unlocking screen
+      if (err && (err.code === 1 || err.code === 2)) {
+        console.log('Transient network/aborted error detected. Restoring position and resuming...');
+        const savedProgress = progress;
+        
+        setTimeout(() => {
+          if (audioRef.current) {
+            audioRef.current.load();
+            audioRef.current.currentTime = savedProgress;
+            if (isPlaying) {
+              audioRef.current.play().catch(playErr => {
+                console.warn('Recover play failed:', playErr);
+              });
+            }
+          }
+        }, 1000); // Wait 1 second for OS/network state to stabilize
+        return;
+      }
+
+      // 2. Fall back to secure proxy URL if direct CDN fails
       const token = (session?.user as any)?.id || '';
       const proxyUrl = `/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`;
       
@@ -325,10 +353,12 @@ export default function MusicPlayer() {
         console.log('Direct CDN stream failed. Falling back to secure proxy URL:', proxyUrl);
         setStreamUrl(proxyUrl);
         
-        // Force reload and play
+        // Force reload and play from last progress
+        const savedProgress = progress;
         setTimeout(() => {
           if (audioRef.current) {
             audioRef.current.load();
+            audioRef.current.currentTime = savedProgress;
             if (isPlaying) {
               audioRef.current.play().catch(err => {
                 console.warn('Playback resume on fallback URL failed:', err);
