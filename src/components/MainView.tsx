@@ -20,7 +20,8 @@ import {
   Settings as SettingsIcon,
   ChevronRight,
   ListMusic,
-  FolderOpen
+  FolderOpen,
+  Library
 } from 'lucide-react';
 
 interface MainViewProps {
@@ -58,6 +59,12 @@ export default function MainView({ searchQuery }: MainViewProps) {
   const [playlistDetail, setPlaylistDetail] = useState<PlaylistDetail | null>(null);
   const [playlistsList, setPlaylistsList] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Playlist Creation and Collapsing States (Mobile support)
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [newPlaylistDesc, setNewPlaylistDesc] = useState('');
+  const [isPlaylistsCollapsed, setIsPlaylistsCollapsed] = useState(false);
 
   // File Upload State
   const [uploading, setUploading] = useState(false);
@@ -348,6 +355,35 @@ export default function MainView({ searchQuery }: MainViewProps) {
     }
   };
 
+  // Handle Playlist Creation (Mobile support)
+  const handleCreatePlaylist = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPlaylistName.trim()) return;
+
+    try {
+      const res = await fetch('/api/playlists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newPlaylistName,
+          description: newPlaylistDesc,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setNewPlaylistName('');
+        setNewPlaylistDesc('');
+        setShowCreateModal(false);
+        fetchPlaylists(); // Refresh local list
+        // Automatically view the newly created playlist
+        setActiveView('playlists', data.playlist.id);
+      }
+    } catch (err) {
+      console.error('Error creating playlist:', err);
+    }
+  };
+
   // Handle Link Submission (YouTube/Vimeo)
   const handleLinkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -519,7 +555,16 @@ export default function MainView({ searchQuery }: MainViewProps) {
       {activeView === 'home' && (
         <div className="space-y-8 animate-fade-in">
           <div>
-            <h1 className="text-3xl font-extrabold text-white mb-6">Welcome back</h1>
+            <div className="flex items-center justify-between mb-6">
+              <h1 className="text-3xl font-extrabold text-white">Welcome back</h1>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="md:hidden flex items-center justify-center bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white p-2.5 rounded-full transition-all active:scale-95 shadow-md"
+                title="Create Playlist"
+              >
+                <Plus className="w-5 h-5" />
+              </button>
+            </div>
             
             {/* Playlists grid */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -663,6 +708,67 @@ export default function MainView({ searchQuery }: MainViewProps) {
                 })}
               </div>
             )}
+
+            {/* Mobile collapsible Playlists Section */}
+            <div className="md:hidden mt-8">
+              <div 
+                onClick={() => setIsPlaylistsCollapsed(!isPlaylistsCollapsed)}
+                className="flex items-center justify-between py-2 border-b border-zinc-900 cursor-pointer"
+              >
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Library className="w-5 h-5 text-spotify-green" />
+                  Your Playlists
+                </h2>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowCreateModal(true);
+                    }}
+                    className="text-zinc-400 hover:text-white p-1 hover:bg-zinc-900 rounded-full transition-all"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                  <ChevronRight className={`w-5 h-5 text-zinc-400 transition-transform duration-200 ${!isPlaylistsCollapsed ? 'rotate-90' : ''}`} />
+                </div>
+              </div>
+
+              {!isPlaylistsCollapsed && (
+                <div className="mt-3 space-y-2 animate-fade-in">
+                  {playlistsList.length === 0 ? (
+                    <div className="p-4 rounded-lg bg-zinc-900/30 text-center text-zinc-500 text-xs">
+                      No playlists yet. Tap the + icon to create one!
+                    </div>
+                  ) : (
+                    playlistsList.map((playlist) => (
+                      <div
+                        key={playlist.id}
+                        onClick={() => setActiveView('playlists', playlist.id)}
+                        className="flex items-center justify-between p-3 bg-zinc-900/40 hover:bg-zinc-900/80 rounded-lg cursor-pointer border border-zinc-950/20"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 bg-zinc-800 rounded flex items-center justify-center overflow-hidden flex-shrink-0">
+                            {playlist.coverImage ? (
+                              <img src={playlist.coverImage} alt={playlist.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <ListMusic className="w-5 h-5 text-zinc-400" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-white truncate">{playlist.name}</p>
+                            <p className="text-xs text-zinc-500">{playlist.description || 'No description'}</p>
+                          </div>
+                        </div>
+                        <span className="text-xs text-zinc-500 flex-shrink-0">
+                          {playlist.songs?.length || playlist.songCount || 0} songs
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
       )}
@@ -1315,6 +1421,57 @@ export default function MainView({ searchQuery }: MainViewProps) {
             ) : (
               <p className="text-xs text-zinc-500">Not authenticated. Log in from the login page.</p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Create Playlist Modal (Overlay) */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-bg-card border border-border-muted p-6 rounded-lg w-full max-w-sm glass-panel shadow-2xl">
+            <h3 className="text-lg font-bold text-white mb-4">Create New Playlist</h3>
+            <form onSubmit={handleCreatePlaylist} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase text-zinc-400 mb-1.5">Playlist Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="My awesome playlist"
+                  value={newPlaylistName}
+                  onChange={(e) => setNewPlaylistName(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 text-white rounded px-3 py-2 text-sm focus:outline-none focus:border-spotify-green"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase text-zinc-400 mb-1.5">Description (Optional)</label>
+                <textarea
+                  placeholder="Give your playlist a description"
+                  value={newPlaylistDesc}
+                  onChange={(e) => setNewPlaylistDesc(e.target.value)}
+                  rows={3}
+                  className="w-full bg-zinc-900 border border-zinc-800 text-white rounded px-3 py-2 text-sm focus:outline-none focus:border-spotify-green resize-none"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setNewPlaylistName('');
+                    setNewPlaylistDesc('');
+                  }}
+                  className="px-4 py-2 text-sm text-zinc-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-spotify-green hover:bg-spotify-green-hover text-black font-semibold text-sm px-4 py-2 rounded transition-all"
+                >
+                  Create
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
