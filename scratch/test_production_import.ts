@@ -23,7 +23,7 @@ import { resolveYoutubeAudioStream, resolveYoutubeMetadata } from '../src/lib/yo
 import { prisma } from '../src/lib/prisma';
 
 async function testProductionImport() {
-  const videoUrl = 'https://www.youtube.com/watch?v=tKZmHEyYlbA';
+  const videoUrl = 'https://www.youtube.com/watch?v=btxyjaUVerQ';
   
   // Find a user in the DB to simulate with (e.g. the first user, or a specific userId)
   const user = await prisma.user.findFirst({

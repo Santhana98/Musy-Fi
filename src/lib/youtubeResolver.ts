@@ -2,6 +2,36 @@ import { Readable } from 'stream';
 import { getYtDlpDirectUrl, getYtDlpAudioStream, getYtDlpMetadata } from './ytdlp';
 import { Innertube, Platform } from 'youtubei.js';
 
+// Global logs capture for remote debugging on Render
+const serverLogs = (globalThis as any).__serverLogs || [];
+(globalThis as any).__serverLogs = serverLogs;
+
+function captureLog(type: string, ...args: any[]) {
+  const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+  const timestamp = new Date().toISOString();
+  serverLogs.push(`[${timestamp}] [${type}] ${message}`);
+  if (serverLogs.length > 200) {
+    serverLogs.shift();
+  }
+}
+
+const originalLog = console.log;
+const originalError = console.error;
+const originalWarn = console.warn;
+
+console.log = (...args: any[]) => {
+  captureLog('LOG', ...args);
+  originalLog(...args);
+};
+console.error = (...args: any[]) => {
+  captureLog('ERROR', ...args);
+  originalError(...args);
+};
+console.warn = (...args: any[]) => {
+  captureLog('WARN', ...args);
+  originalWarn(...args);
+};
+
 // Setup signature deciphering platform shim for Node 24+ compatibility
 Platform.shim.eval = async (data: any) => {
   return new Function(data.output || data)();
