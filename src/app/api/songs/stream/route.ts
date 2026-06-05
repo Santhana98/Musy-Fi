@@ -10,6 +10,14 @@ import { Readable } from 'stream';
 import ytdl from '@distube/ytdl-core';
 import { resolveYoutubeDirectUrl } from '@/lib/youtubeResolver';
 
+function getHeader(headers: any, name: string): string {
+  if (!headers) return '';
+  if (typeof headers.get === 'function') {
+    return headers.get(name) || '';
+  }
+  return headers[name] || headers[name.toLowerCase()] || headers[name.toUpperCase()] || '';
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -132,17 +140,17 @@ export async function GET(request: NextRequest) {
         const responseHeaders = new Headers();
         
         // Pass content type from Google, default to audio/mpeg
-        const contentType = driveResponse.headers['content-type'] || 'audio/mpeg';
+        const contentType = getHeader(driveResponse.headers, 'content-type') || 'audio/mpeg';
         responseHeaders.set('Content-Type', contentType);
         responseHeaders.set('Accept-Ranges', 'bytes');
         responseHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
 
-        const contentRange = driveResponse.headers['content-range'];
+        const contentRange = getHeader(driveResponse.headers, 'content-range');
         if (contentRange) {
           responseHeaders.set('Content-Range', contentRange);
         }
 
-        const contentLength = driveResponse.headers['content-length'];
+        const contentLength = getHeader(driveResponse.headers, 'content-length');
         if (contentLength) {
           responseHeaders.set('Content-Length', contentLength);
         }
