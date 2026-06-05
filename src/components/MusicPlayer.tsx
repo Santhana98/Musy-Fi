@@ -150,7 +150,8 @@ export default function MusicPlayer() {
         console.warn('Initial play on track change interrupted:', err);
       });
     }
-  }, [currentTrack, isVideoTrack, isPlaying]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTrack?.id, isVideoTrack]);
 
   // 2. Synchronize Play/Pause toggling
   useEffect(() => {
