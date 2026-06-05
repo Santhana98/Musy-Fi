@@ -68,37 +68,9 @@ export async function GET(request: NextRequest) {
       try {
         const videoUrl = `https://www.youtube.com/watch?v=${song.sourceUrl}`;
         const directUrl = await resolveYoutubeDirectUrl(videoUrl);
-
-        const headers: Record<string, string> = {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        };
-        if (range) {
-          headers['Range'] = range;
-        }
-
-        const response = await fetch(directUrl, { headers });
-
-        const responseHeaders = new Headers();
-        responseHeaders.set('Content-Type', 'audio/mp4');
-        responseHeaders.set('Accept-Ranges', 'bytes');
-        responseHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-
-        const contentRange = response.headers.get('content-range');
-        if (contentRange) {
-          responseHeaders.set('Content-Range', contentRange);
-        }
-
-        const contentLength = response.headers.get('content-length');
-        if (contentLength) {
-          responseHeaders.set('Content-Length', contentLength);
-        }
-        
-        return new Response(response.body, {
-          status: response.status,
-          headers: responseHeaders,
-        });
+        return NextResponse.redirect(directUrl);
       } catch (err: any) {
-        console.error('Failed to stream YouTube video:', err);
+        console.error('Failed to resolve YouTube URL:', err);
         return new NextResponse(`Failed to stream YouTube: ${err.message}`, { status: 500 });
       }
     }

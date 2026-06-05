@@ -59,43 +59,136 @@ export default function MusicPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
   const lastLoadedTrackIdRef = useRef<string>('');
+  const activeBlobUrlRef = useRef<string>('');
+  const nextBlobUrlRef = useRef<string>('');
 
-  // Synchronize stream URL and next track preloading URL
+  // Cleanup Object URLs on unmount
+  useEffect(() => {
+    return () => {
+      if (activeBlobUrlRef.current) {
+        URL.revokeObjectURL(activeBlobUrlRef.current);
+      }
+      if (nextBlobUrlRef.current) {
+        URL.revokeObjectURL(nextBlobUrlRef.current);
+      }
+    };
+  }, []);
+
+  // Synchronize stream URL
   useEffect(() => {
     if (!currentTrack) {
       setStreamUrl('');
       lastLoadedTrackIdRef.current = '';
+      if (activeBlobUrlRef.current) {
+        URL.revokeObjectURL(activeBlobUrlRef.current);
+        activeBlobUrlRef.current = '';
+      }
       return;
     }
     
     // Only update streamUrl if the track actually changed.
-    // This prevents window focus session refreshes from resetting the audio src.
     if (lastLoadedTrackIdRef.current === currentTrack.id && streamUrl) {
       return;
     }
 
-    const token = (session?.user as any)?.id || '';
-    const proxyUrl = `/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`;
-    const newUrl = currentTrack.type === 'google'
-      ? `https://lh3.googleusercontent.com/d/${currentTrack.sourceUrl}`
-      : proxyUrl;
+    // Revoke previous blob URL if it exists
+    if (activeBlobUrlRef.current) {
+      URL.revokeObjectURL(activeBlobUrlRef.current);
+      activeBlobUrlRef.current = '';
+    }
 
-    setStreamUrl(newUrl);
+    const token = (session?.user as any)?.id || '';
+    const accessToken = (session?.user as any)?.accessToken || '';
+    const proxyUrl = `/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`;
+
+    if (currentTrack.type === 'google') {
+      if (accessToken) {
+        console.log(`[MusicPlayer] Fetching Google Drive track "${currentTrack.title}" client-side...`);
+        const driveUrl = `https://www.googleapis.com/drive/v3/files/${currentTrack.sourceUrl}?alt=media`;
+        
+        fetch(driveUrl, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        })
+          .then(async (res) => {
+            if (!res.ok) {
+              throw new Error(`Google API returned status ${res.status}`);
+            }
+            const blob = await res.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            console.log(`[MusicPlayer] Client-side fetch success for "${currentTrack.title}". Playing from local Object URL.`);
+            activeBlobUrlRef.current = blobUrl;
+            setStreamUrl(blobUrl);
+          })
+          .catch((err) => {
+            console.warn('[MusicPlayer] Client-side Google Drive fetch failed, falling back to proxy stream:', err);
+            setStreamUrl(proxyUrl);
+          });
+      } else {
+        // Fall back to direct public CDN link
+        const publicUrl = `https://lh3.googleusercontent.com/d/${currentTrack.sourceUrl}`;
+        console.log(`[MusicPlayer] Google Drive track "${currentTrack.title}" has no access token. Trying public CDN URL...`);
+        setStreamUrl(publicUrl);
+      }
+    } else {
+      // YouTube or normal mp3 tracks use proxyUrl
+      setStreamUrl(proxyUrl);
+    }
+
     lastLoadedTrackIdRef.current = currentTrack.id;
   }, [currentTrack, session, streamUrl]);
 
+  // Synchronize next track preloading URL
   useEffect(() => {
     if (queue.length === 0 || currentIndex === -1) {
       setNextTrackUrl('');
+      if (nextBlobUrlRef.current) {
+        URL.revokeObjectURL(nextBlobUrlRef.current);
+        nextBlobUrlRef.current = '';
+      }
       return;
     }
     const nextIdx = currentIndex + 1;
     if (nextIdx < queue.length) {
       const nextTrackObj = queue[nextIdx];
       const token = (session?.user as any)?.id || '';
+      const accessToken = (session?.user as any)?.accessToken || '';
       
+      // Revoke previous preloaded blob if it exists
+      if (nextBlobUrlRef.current) {
+        URL.revokeObjectURL(nextBlobUrlRef.current);
+        nextBlobUrlRef.current = '';
+      }
+
       if (nextTrackObj.type === 'google') {
-        setNextTrackUrl(`https://lh3.googleusercontent.com/d/${nextTrackObj.sourceUrl}`);
+        if (accessToken) {
+          console.log(`[MusicPlayer] Pre-fetching next Google Drive track "${nextTrackObj.title}" client-side...`);
+          const driveUrl = `https://www.googleapis.com/drive/v3/files/${nextTrackObj.sourceUrl}?alt=media`;
+          
+          fetch(driveUrl, {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          })
+            .then(async (res) => {
+              if (!res.ok) {
+                throw new Error(`Google API returned status ${res.status}`);
+              }
+              const blob = await res.blob();
+              const blobUrl = URL.createObjectURL(blob);
+              console.log(`[MusicPlayer] Client-side pre-fetch success for "${nextTrackObj.title}".`);
+              nextBlobUrlRef.current = blobUrl;
+              setNextTrackUrl(blobUrl);
+            })
+            .catch((err) => {
+              console.warn('[MusicPlayer] Client-side preload fetch failed:', err);
+              // Fallback to proxy URL
+              setNextTrackUrl(`/api/songs/stream?id=${nextTrackObj.id}${token ? `&token=${token}` : ''}`);
+            });
+        } else {
+          setNextTrackUrl(`https://lh3.googleusercontent.com/d/${nextTrackObj.sourceUrl}`);
+        }
       } else if (nextTrackObj.type === 'mp3') {
         setNextTrackUrl(`/api/songs/stream?id=${nextTrackObj.id}${token ? `&token=${token}` : ''}`);
       } else {
@@ -103,6 +196,10 @@ export default function MusicPlayer() {
       }
     } else {
       setNextTrackUrl('');
+      if (nextBlobUrlRef.current) {
+        URL.revokeObjectURL(nextBlobUrlRef.current);
+        nextBlobUrlRef.current = '';
+      }
     }
   }, [queue, currentIndex, session]);
 
