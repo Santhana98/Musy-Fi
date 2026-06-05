@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { usePlayer, Song } from '@/context/PlayerContext';
+import { useSession } from 'next-auth/react';
 import { 
   Play, 
   Pause, 
@@ -25,6 +26,7 @@ import {
 const ReactPlayer = dynamic(() => import('react-player'), { ssr: false }) as any;
 
 export default function MusicPlayer() {
+  const { data: session } = useSession();
   const {
     currentTrack,
     isPlaying,
@@ -293,7 +295,15 @@ export default function MusicPlayer() {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  const streamUrl = `/api/songs/stream?id=${currentTrack.id}`;
+  let streamUrl = '';
+  if (currentTrack) {
+    const token = (session as any)?.user?.accessToken;
+    if (currentTrack.type === 'google' && token) {
+      streamUrl = `https://www.googleapis.com/drive/v3/files/${currentTrack.sourceUrl}?alt=media&access_token=${token}`;
+    } else {
+      streamUrl = `/api/songs/stream?id=${currentTrack.id}`;
+    }
+  }
 
   return (
     <>

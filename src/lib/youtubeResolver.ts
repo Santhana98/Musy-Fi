@@ -156,18 +156,33 @@ export async function resolveYoutubeAudioStream(url: string): Promise<Readable> 
           downloadMode: 'audio',
           audioFormat: 'best',
         }),
-        signal: AbortSignal.timeout(5000)
+        signal: AbortSignal.timeout(9500) // Maximize time within serverless limit
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.status !== 'error' && data.url) {
-          console.log(`[youtubeResolver] Cobalt resolved stream URL: ${data.url}`);
-          const downloadRes = await fetch(data.url);
-          if (downloadRes.ok && downloadRes.body) {
-            return Readable.fromWeb(downloadRes.body as any);
-          }
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => '');
+        throw new Error(`HTTP Error ${res.status}: ${errorText || 'No response body'}`);
+      }
+
+      const data = await res.json();
+      if (data.status === 'error') {
+        throw new Error(`Cobalt returned error: ${data.text || JSON.stringify(data)}`);
+      }
+
+      if (data.url) {
+        console.log(`[youtubeResolver] Cobalt resolved stream URL: ${data.url}`);
+        const downloadRes = await fetch(data.url, {
+          signal: AbortSignal.timeout(9500)
+        });
+        if (!downloadRes.ok) {
+          throw new Error(`Download HTTP Error ${downloadRes.status}`);
         }
+        if (!downloadRes.body) {
+          throw new Error('Response body is empty');
+        }
+        return Readable.fromWeb(downloadRes.body as any);
+      } else {
+        throw new Error(`Invalid response format: ${JSON.stringify(data)}`);
       }
     } catch (err: any) {
       console.warn(`[youtubeResolver] Cobalt streaming failed for ${instance}:`, err.message);
@@ -179,21 +194,29 @@ export async function resolveYoutubeAudioStream(url: string): Promise<Readable> 
     try {
       console.log(`[youtubeResolver] Requesting audio stream from Piped: ${instance}`);
       const res = await fetch(`${instance}/streams/${videoId}`, {
-        signal: AbortSignal.timeout(5000)
+        signal: AbortSignal.timeout(7000)
       });
-      if (res.ok) {
-        const data = await res.json();
-        const audioStreams = data.audioStreams || [];
-        if (audioStreams.length > 0) {
-          // Prefer M4A or high-quality audio
-          const bestAudio = audioStreams.find((s: any) => s.format === 'M4A' || s.mimeType.includes('mp4')) || audioStreams[0];
-          console.log(`[youtubeResolver] Piped resolved audio stream URL: ${bestAudio.url}`);
-          const downloadRes = await fetch(bestAudio.url);
-          if (downloadRes.ok && downloadRes.body) {
-            return Readable.fromWeb(downloadRes.body as any);
-          }
-        }
+      if (!res.ok) {
+        throw new Error(`HTTP Error ${res.status}`);
       }
+      const data = await res.json();
+      const audioStreams = data.audioStreams || [];
+      if (audioStreams.length === 0) {
+        throw new Error('No audio streams found in Piped response');
+      }
+      // Prefer M4A or high-quality audio
+      const bestAudio = audioStreams.find((s: any) => s.format === 'M4A' || s.mimeType.includes('mp4')) || audioStreams[0];
+      console.log(`[youtubeResolver] Piped resolved audio stream URL: ${bestAudio.url}`);
+      const downloadRes = await fetch(bestAudio.url, {
+        signal: AbortSignal.timeout(9500)
+      });
+      if (!downloadRes.ok) {
+        throw new Error(`Download HTTP Error ${downloadRes.status}`);
+      }
+      if (!downloadRes.body) {
+        throw new Error('Response body is empty');
+      }
+      return Readable.fromWeb(downloadRes.body as any);
     } catch (err: any) {
       console.warn(`[youtubeResolver] Piped streaming failed for ${instance}:`, err.message);
     }
@@ -226,14 +249,22 @@ export async function resolveYoutubeDirectUrl(url: string): Promise<string> {
           downloadMode: 'audio',
           audioFormat: 'best',
         }),
-        signal: AbortSignal.timeout(5000)
+        signal: AbortSignal.timeout(9500)
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.status !== 'error' && data.url) {
-          return data.url;
-        }
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => '');
+        throw new Error(`HTTP Error ${res.status}: ${errorText || 'No response body'}`);
+      }
+
+      const data = await res.json();
+      if (data.status === 'error') {
+        throw new Error(`Cobalt error: ${data.text || JSON.stringify(data)}`);
+      }
+      if (data.url) {
+        return data.url;
+      } else {
+        throw new Error(`Invalid response: ${JSON.stringify(data)}`);
       }
     } catch (err: any) {
       console.warn(`[youtubeResolver] Cobalt direct URL resolution failed for ${instance}:`, err.message);
@@ -245,15 +276,18 @@ export async function resolveYoutubeDirectUrl(url: string): Promise<string> {
     try {
       console.log(`[youtubeResolver] Resolving direct URL via Piped: ${instance}`);
       const res = await fetch(`${instance}/streams/${videoId}`, {
-        signal: AbortSignal.timeout(5000)
+        signal: AbortSignal.timeout(7000)
       });
-      if (res.ok) {
-        const data = await res.json();
-        const audioStreams = data.audioStreams || [];
-        if (audioStreams.length > 0) {
-          const bestAudio = audioStreams.find((s: any) => s.format === 'M4A' || s.mimeType.includes('mp4')) || audioStreams[0];
-          return bestAudio.url;
-        }
+      if (!res.ok) {
+        throw new Error(`HTTP Error ${res.status}`);
+      }
+      const data = await res.json();
+      const audioStreams = data.audioStreams || [];
+      if (audioStreams.length > 0) {
+        const bestAudio = audioStreams.find((s: any) => s.format === 'M4A' || s.mimeType.includes('mp4')) || audioStreams[0];
+        return bestAudio.url;
+      } else {
+        throw new Error('No audio streams found');
       }
     } catch (err: any) {
       console.warn(`[youtubeResolver] Piped direct URL resolution failed for ${instance}:`, err.message);
