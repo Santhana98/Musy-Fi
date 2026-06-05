@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 
 export interface Song {
   id: string;
@@ -27,6 +28,11 @@ interface PlayerContextType {
   activeView: ActiveView;
   activePlaylistId: string | null;
   trackRestartTrigger: number;
+  
+  // Theme state
+  userTheme: 'male' | 'female' | null;
+  loadingTheme: boolean;
+  setUserTheme: (theme: 'male' | 'female') => Promise<void>;
   
   // Playback Control Functions
   playTrack: (track: Song, newQueueContext?: Song[]) => void;
@@ -61,6 +67,51 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [originalQueue, setOriginalQueue] = useState<Song[]>([]); // for restoring shuffle order
   const [trackRestartTrigger, setTrackRestartTrigger] = useState<number>(0);
+
+  // User Theme State & Effects
+  const [userTheme, setUserThemeState] = useState<'male' | 'female' | null>(null);
+  const [loadingTheme, setLoadingTheme] = useState<boolean>(true);
+
+  const { data: session, status } = useSession();
+
+  useEffect(() => {
+    const fetchUserTheme = async () => {
+      if (status !== 'authenticated') {
+        setUserThemeState(null);
+        setLoadingTheme(false);
+        return;
+      }
+      try {
+        const res = await fetch('/api/user/theme');
+        if (res.ok) {
+          const data = await res.json();
+          setUserThemeState(data.theme);
+        }
+      } catch (err) {
+        console.error('Error fetching theme:', err);
+      } finally {
+        setLoadingTheme(false);
+      }
+    };
+
+    fetchUserTheme();
+  }, [session, status]);
+
+  const setUserTheme = async (theme: 'male' | 'female') => {
+    try {
+      setUserThemeState(theme); // optimistic update
+      const res = await fetch('/api/user/theme', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to update theme in database');
+      }
+    } catch (err) {
+      console.error('Failed to update theme:', err);
+    }
+  };
 
   // Load volume from local storage on mount
   useEffect(() => {
@@ -215,6 +266,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         activeView,
         activePlaylistId,
         trackRestartTrigger,
+        userTheme,
+        loadingTheme,
+        setUserTheme,
         playTrack,
         togglePlay,
         setPlaying,

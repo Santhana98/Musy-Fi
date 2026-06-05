@@ -47,7 +47,10 @@ export default function MainView({ searchQuery }: MainViewProps) {
     currentTrack, 
     isPlaying,
     togglePlay,
-    addToQueue
+    addToQueue,
+    userTheme,
+    loadingTheme,
+    setUserTheme
   } = usePlayer();
 
   const [allSongs, setAllSongs] = useState<Song[]>([]);
@@ -458,13 +461,59 @@ export default function MainView({ searchQuery }: MainViewProps) {
 
   const isHome = activeView === 'home';
 
+  // Determine personalized background
+  const getBackgroundImage = () => {
+    if (userTheme === 'male') {
+      return 'linear-gradient(to bottom, rgba(7, 7, 8, 0.65), rgba(7, 7, 8, 0.95)), url(/bg-male.jpg)';
+    } else if (userTheme === 'female') {
+      return 'linear-gradient(to bottom, rgba(7, 7, 8, 0.65), rgba(7, 7, 8, 0.95)), url(/bg-female.jpg)';
+    }
+    return isHome 
+      ? 'linear-gradient(to bottom, rgba(7, 7, 8, 0.65), rgba(7, 7, 8, 0.9)), url(/bg-home-sunset.jpg)' 
+      : 'none';
+  };
+
   return (
     <div 
       className={`flex-1 overflow-y-auto px-4 md:px-8 py-6 pb-36 md:pb-24 relative select-none bg-cover bg-center bg-no-repeat ${
-        isHome ? '' : 'bg-gradient-to-b from-zinc-900 to-bg-base'
+        userTheme || isHome ? '' : 'bg-gradient-to-b from-zinc-900 to-bg-base'
       }`}
-      style={isHome ? { backgroundImage: 'linear-gradient(to bottom, rgba(7, 7, 8, 0.65), rgba(7, 7, 8, 0.9)), url(/bg-home-sunset.jpg)' } : {}}
+      style={{ backgroundImage: getBackgroundImage() }}
     >
+      
+      {/* Theme Selection Modal for First Login */}
+      {session && !loadingTheme && !userTheme && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-bg-card border border-border-muted p-8 rounded-lg w-full max-w-lg glass-panel shadow-2xl text-center space-y-6 animate-scale-up">
+            <div className="space-y-2">
+              <h2 className="text-2xl font-extrabold text-white tracking-tight">Choose Your Experience</h2>
+              <p className="text-sm text-zinc-400">Select a theme to personalize your Musy-Fi dashboard background.</p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-6 pt-4">
+              {/* Male Theme Option */}
+              <div
+                onClick={() => setUserTheme('male')}
+                className="flex flex-col items-center gap-4 p-6 bg-zinc-900/60 hover:bg-zinc-800/80 rounded-xl cursor-pointer border border-zinc-800 hover:border-spotify-green transition-all duration-300 group shadow-lg"
+              >
+                <div className="text-5xl group-hover:scale-110 transition-transform">👨</div>
+                <div className="text-base font-bold text-white group-hover:text-spotify-green transition-colors">Male Theme</div>
+                <p className="text-xs text-zinc-500">Nature landscape illustration</p>
+              </div>
+
+              {/* Female Theme Option */}
+              <div
+                onClick={() => setUserTheme('female')}
+                className="flex flex-col items-center gap-4 p-6 bg-zinc-900/60 hover:bg-zinc-800/80 rounded-xl cursor-pointer border border-zinc-800 hover:border-spotify-green transition-all duration-300 group shadow-lg"
+              >
+                <div className="text-5xl group-hover:scale-110 transition-transform">👩</div>
+                <div className="text-base font-bold text-white group-hover:text-spotify-green transition-colors">Female Theme</div>
+                <p className="text-xs text-zinc-500">Minimalist musical illustration</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* 1. HOME VIEW */}
       {activeView === 'home' && (
@@ -1156,6 +1205,50 @@ export default function MainView({ searchQuery }: MainViewProps) {
           <div>
             <h1 className="text-2xl font-bold text-white mb-2">Settings</h1>
             <p className="text-xs text-zinc-400">Configure your cloud connections and account details.</p>
+          </div>
+
+          {/* Theme Selection Settings Card */}
+          <div className="bg-zinc-900/60 rounded-lg border border-zinc-800 p-6 space-y-6">
+            <h3 className="text-sm font-bold text-white border-b border-zinc-800 pb-3 flex items-center gap-2">
+              <Disc className="w-4 h-4 text-spotify-green animate-spin" style={{ animationDuration: '6s' }} />
+              <span>Personalized Theme Settings</span>
+            </h3>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <span className="text-sm font-bold text-white">Choose Theme Background</span>
+                <p className="text-xs text-zinc-400 max-w-md">
+                  Personalize the interface with your preferred artwork. This changes the background for Welcome Back, Library, Playlists, and Dashboard.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setUserTheme('male')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all border ${
+                    userTheme === 'male'
+                      ? 'bg-spotify-green border-spotify-green text-black'
+                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600'
+                  }`}
+                >
+                  <span>👨</span>
+                  <span>Male Theme</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserTheme('female')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all border ${
+                    userTheme === 'female'
+                      ? 'bg-spotify-green border-spotify-green text-black'
+                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600'
+                  }`}
+                >
+                  <span>👩</span>
+                  <span>Female Theme</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Storage Connection Status Card */}

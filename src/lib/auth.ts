@@ -61,6 +61,7 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id;
+        token.theme = (user as any).theme;
       }
       if (account && account.provider === "google") {
         token.accessToken = account.access_token;
@@ -71,6 +72,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as any).id = token.id as string;
         (session.user as any).accessToken = token.accessToken as string;
+        (session.user as any).theme = token.theme as string;
       }
       return session;
     },

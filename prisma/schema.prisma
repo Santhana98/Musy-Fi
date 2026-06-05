@@ -21,6 +21,7 @@ model User {
   emailVerified DateTime?
   image         String?
   password      String?     // Standard hashed password for Credentials login
+  theme         String?     // User's personalized UI background theme ('male' or 'female')
   resetToken    String?     @unique
   resetTokenExpiry DateTime?
   createdAt     DateTime    @default(now())
