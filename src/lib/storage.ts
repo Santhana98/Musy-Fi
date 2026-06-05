@@ -90,6 +90,20 @@ export async function saveAudioFile(
       });
 
       if (response.data.id) {
+        // Make the file readable by anyone with the link to support direct streaming
+        try {
+          await drive.permissions.create({
+            fileId: response.data.id,
+            requestBody: {
+              role: 'reader',
+              type: 'anyone',
+            },
+          });
+          console.log(`[Storage] Set public read permission on Google Drive file: ${response.data.id}`);
+        } catch (permError) {
+          console.warn('[Storage] Failed to set public read permission on Google Drive file:', permError);
+        }
+
         return {
           sourceUrl: response.data.id,
           storageType: 'google',

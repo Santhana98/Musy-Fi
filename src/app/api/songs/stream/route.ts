@@ -85,34 +85,10 @@ export async function GET(request: NextRequest) {
     }
 
     if (song.type === 'google') {
-      const drive = await getGoogleDriveClient(userId);
-      if (!drive) {
-        return new NextResponse('Google Drive disconnected', { status: 400 });
-      }
+      // Construct direct Google Drive public streaming URL
+      const directUrl = `https://drive.google.com/uc?id=${song.sourceUrl}&export=download`;
 
-      // Fetch file info (this automatically triggers token refresh if expired)
-      await drive.files.get({
-        fileId: song.sourceUrl,
-        fields: 'id',
-      });
-
-      // Get the fresh access token from the database
-      const account = await prisma.account.findFirst({
-        where: {
-          userId,
-          provider: 'google',
-        },
-      });
-
-      const token = account?.access_token;
-      if (!token) {
-        return new NextResponse('Google Access Token not found', { status: 500 });
-      }
-
-      // Construct direct Google Drive streaming URL
-      const directUrl = `https://www.googleapis.com/drive/v3/files/${song.sourceUrl}?alt=media&access_token=${token}`;
-
-      // Redirect the client browser directly to Google Drive CDN
+      // Redirect the client browser directly to Google Drive CDN (bypassing Vercel timeout)
       return NextResponse.redirect(directUrl, { status: 302 });
     } else {
       // Local file stream
