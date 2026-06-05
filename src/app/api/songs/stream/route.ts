@@ -12,13 +12,24 @@ import { resolveYoutubeDirectUrl } from '@/lib/youtubeResolver';
 
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
     const session = await getServerSession(authOptions);
-    if (!session || !session.user || !(session.user as any).id) {
+    
+    let userId = '';
+    if (session && session.user && (session.user as any).id) {
+      userId = (session.user as any).id;
+    } else {
+      // Fallback for iOS Safari / mobile range requests that strip cookies
+      const queryToken = searchParams.get('token');
+      if (queryToken) {
+        userId = queryToken;
+      }
+    }
+
+    if (!userId) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    const userId = (session.user as any).id;
-    const { searchParams } = new URL(request.url);
     const songId = searchParams.get('id');
 
     if (!songId) {
@@ -85,11 +96,44 @@ export async function GET(request: NextRequest) {
     }
 
     if (song.type === 'google') {
-      // Construct direct Google Drive public streaming URL
-      const directUrl = `https://drive.google.com/uc?id=${song.sourceUrl}&export=download`;
+      try {
+        const directUrl = `https://drive.google.com/uc?id=${song.sourceUrl}&export=download`;
 
-      // Redirect the client browser directly to Google Drive CDN (bypassing Vercel timeout)
-      return NextResponse.redirect(directUrl, { status: 302 });
+        const headers: Record<string, string> = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        };
+        if (range) {
+          headers['Range'] = range;
+        }
+
+        const response = await fetch(directUrl, { headers });
+
+        const responseHeaders = new Headers();
+        
+        // Pass content type from Google, default to audio/mpeg
+        const contentType = response.headers.get('content-type') || 'audio/mpeg';
+        responseHeaders.set('Content-Type', contentType);
+        responseHeaders.set('Accept-Ranges', 'bytes');
+        responseHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+        const contentRange = response.headers.get('content-range');
+        if (contentRange) {
+          responseHeaders.set('Content-Range', contentRange);
+        }
+
+        const contentLength = response.headers.get('content-length');
+        if (contentLength) {
+          responseHeaders.set('Content-Length', contentLength);
+        }
+        
+        return new Response(response.body, {
+          status: response.status,
+          headers: responseHeaders,
+        });
+      } catch (err: any) {
+        console.error('Failed to proxy Google Drive stream:', err);
+        return new NextResponse(`Failed to stream Google Drive: ${err.message}`, { status: 500 });
+      }
     } else {
       // Local file stream
       const LOCAL_STORAGE_DIR = path.join(process.cwd(), 'local_storage');
