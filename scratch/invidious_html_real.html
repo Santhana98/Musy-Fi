@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="stylesheet" href="/css/base-min.css" />
+    <link rel="stylesheet" href="/css/tables-min.css" />
+    <title>Invidious Instances</title>
+    <style>
+      body {
+        margin: 40px auto;
+        max-width: 1200px;
+        padding: 0 10px;
+        font-family: Open Sans, Arial;
+        color: #454545;
+        line-height: 1.2;
+      }
+
+      code {
+        background: #f8f8f8;
+      }
+
+      a {
+        color: #0366d6;
+        text-decoration: none;
+      }
+
+      pre code {
+        overflow: auto;
+        tab-size: 4;
+        display: block;
+        padding: 0.5em;
+      }
+
+      .content {
+        overflow-x: overlay;
+      }
+
+      .pure-table {
+        width: 100%;
+      }
+
+      .right {
+        float: right;
+        text-align: right;
+      }
+      
+      .tooltip {
+        position: relative;
+        display: inline-block;
+        <!--border-bottom: 1px dotted black;-->
+      }
+      .tooltip .tooltiptext {
+        visibility: hidden;
+        width: 175px;
+        background-color: #555;
+        color: #fff;
+        text-align: center;
+        border-radius: 6px;
+        padding: 5px 0;
+        position: absolute;
+        z-index: 1;
+        bottom: 125%;
+        left: 0%;
+        margin-left: -60px;
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      
+      .tooltip .tooltiptext::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: #555 transparent transparent transparent;
+      }
+      .tooltip:hover .tooltiptext {
+        visibility: visible;
+        opacity: 1;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="header">
+      <p>
+        <span>To add your instance below please open an issue on <a href="https://github.com/iv-org/documentation/">the documentation repository</a>.</span>
+        <span class="right"><a href="/instances.json?pretty=1&sort_by=type,users">JSON</a></span>
+      </p>
+    </div>
+
+    <div class="content">
+      <table class="pure-table">
+        <thead>
+          <tr>
+            <th><a href="/?sort_by=name">name</a></th>
+            <th><a href="/?sort_by=version">version</a></th>
+            <th><a href="/?sort_by=type">type</a></th>
+            <th><a href="/?sort_by=users">users</a></th>
+            <th><a href="/?sort_by=signup">signup</a></th>
+            <th><a href="/?sort_by=location">location</a></th>
+            <th><a href="/?sort_by=health">
+              <div class="tooltip">health<span class="tooltiptext">Uptime / Downtime displayed in percentage</span></div></a>
+            </th>
+            <th><a href="/?sort_by=cors">cors</a></th>
+            <th><a href="/?sort_by=api">api</a></th>
+          </tr>
+        </thead>
+
+        <tbody>
+          
+            
+            <tr>
+              <td><a href="https://inv.nadeko.net">inv.nadeko.net</a></td>
+              <td>2026.05.27-07c38a4</td>
+              <td>https</td>
+              <td>38252</td>
+              <td>✔</td>
+              <td>🇨🇱 CL</td>
+              <td><a href='https://updown.io/ozfh'>99.944</a></td>
+              <td>❌</td>
+              <td>❌</td>
+            </tr>
+          
+            
+            <tr class="pure-table-odd" >
+              <td><a href="https://invidious.nerdvpn.de">invidious.nerdvpn.de</a></td>
+              <td>2026.06.03-0e0ee40c</td>
+              <td>https</td>
+              <td>6076</td>
+              <td>✔</td>
+              <td>🇺🇦 UA</td>
+              <td><a href='https://updown.io/002y'>99.777</a></td>
+              <td>❌</td>
+              <td>❌</td>
+            </tr>
+          
+            
+            <tr>
+              <td><a href="https://invidious.f5.si">invidious.f5.si</a></td>
+              <td>2026.05.30-0e0ee40</td>
+              <td>https</td>
+              <td>3880</td>
+              <td>✔</td>
+              <td>🇯🇵 JP</td>
+              <td><a href='https://updown.io/g2me'>95.194</a></td>
+              <td>❌</td>
+              <td>❌</td>
+            </tr>
+          
+            
+            <tr class="pure-table-odd" >
+              <td><a href="https://yt.chocolatemoo53.com">yt.chocolatemoo53.com</a></td>
+              <td>2026.05.28-f79b71d</td>
+              <td>https</td>
+              <td>1115</td>
+              <td>✔</td>
+              <td>🇺🇸 US</td>
+              <td><a href='https://updown.io/3y2q'>98.834</a></td>
+              <td>❌</td>
+              <td>❌</td>
+            </tr>
+          
+            
+            <tr>
+              <td><a href="https://inv.thepixora.com">inv.thepixora.com</a></td>
+              <td>2026.02.07-118d635</td>
+              <td>https</td>
+              <td>449</td>
+              <td>✔</td>
+              <td>🇨🇦 CA</td>
+              <td><a href='https://updown.io/y3lz'>94.208</a></td>
+              <td>✔</td>
+              <td>✔</td>
+            </tr>
+          
+            
+            <tr class="pure-table-odd" >
+              <td><a href="https://invidious.tiekoetter.com">invidious.tiekoetter.com</a></td>
+              <td>2026.06.04-9ad352c</td>
+              <td>https</td>
+              <td>0</td>
+              <td>❌</td>
+              <td>🇩🇪 DE</td>
+              <td><a href='https://updown.io/p/resvf'>-</a></td>
+              <td>❌</td>
+              <td>❌</td>
+            </tr>
+          
+            
+            <tr>
+              <td><a href="https://inv-ygg.nadeko.net">inv-ygg.nadeko.net</a></td>
+              <td>-</td>
+              <td>https</td>
+              <td>-</td>
+              <td>-</td>
+              <td>🇨🇱 CL</td>
+              <td><a href='https://updown.io/p/resvf'>-</a></td>
+              <td>-</td>
+              <td>-</td>
+            </tr>
+          
+            
+            <tr class="pure-table-odd" >
+              <td><a href="https://inv.nadeko.ygg">inv.nadeko.ygg</a></td>
+              <td>-</td>
+              <td>https</td>
+              <td>-</td>
+              <td>-</td>
+              <td>🇨🇱 CL</td>
+              <td><a href='https://updown.io/p/resvf'>-</a></td>
+              <td>-</td>
+              <td>-</td>
+            </tr>
+          
+            
+            <tr>
+              <td><a href="http://nadekoohummkxncchcsylr3eku36ze4waq4kdrhcqupckc3pe5qq.b32.i2p">nadekoohummk...q.b32.i2p</a></td>
+              <td>-</td>
+              <td>i2p</td>
+              <td>-</td>
+              <td>-</td>
+              <td>🇨🇱 CL</td>
+              <td><a href='https://updown.io/p/resvf'>-</a></td>
+              <td>-</td>
+              <td>-</td>
+            </tr>
+          
+            
+            <tr class="pure-table-odd" >
+              <td><a href="http://invidious-nerdvpn.i2p">invidious-nerdvpn.i2p</a></td>
+              <td>-</td>
+              <td>i2p</td>
+              <td>-</td>
+              <td>-</td>
+              <td>🇺🇦 UA</td>
+              <td><a href='https://updown.io/p/resvf'>-</a></td>
+              <td>-</td>
+              <td>-</td>
+            </tr>
+          
+            
+            <tr>
+              <td><a href="http://inv.nadekonw7plitnjuawu6ytjsl7jlglk2t6pyq6eftptmiv3dvqndwvyd.onion">inv.nadekonw...vyd.onion</a></td>
+              <td>-</td>
+              <td>onion</td>
+              <td>-</td>
+              <td>-</td>
+              <td>🇨🇱 CL</td>
+              <td><a href='https://updown.io/p/resvf'>-</a></td>
+              <td>-</td>
+              <td>-</td>
+            </tr>
+          
+            
+            <tr class="pure-table-odd" >
+              <td><a href="http://nerdvpneaggggfdiurknszkbmhvjndks5z5k3g5yp4nhphflh3n3boad.onion">nerdvpneaggg...oad.onion</a></td>
+              <td>-</td>
+              <td>onion</td>
+              <td>-</td>
+              <td>-</td>
+              <td>🇺🇦 UA</td>
+              <td><a href='https://updown.io/p/resvf'>-</a></td>
+              <td>-</td>
+              <td>-</td>
+            </tr>
+          
+        </tbody>
+      </table>
+    </div>
+
+    <div class="footer">
+      <p>
+        Health is Uptime / Downtime displayed in percentage.
+        <br>
+        Released under the AGPLv3. Source available <a href="https://github.com/iv-org/instances.invidio.us">here</a>.
+        <br>
+        This site is built with ❤️ using <a href="https://purecss.io/">Pure v1.0.1</a>.
+      </p>
+    </div>
+  </body>
+</html>

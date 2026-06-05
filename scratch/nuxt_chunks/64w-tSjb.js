@@ -1,0 +1,1 @@
+import{_ as t,c as s,a as n,o as c}from"#entry";const r={},o={class:"grid content-center h-screen"};function a(d,e){return c(),s("div",o,[...e[0]||(e[0]=[n("h1",{class:"text-2xl text-center"},"Invalid request",-1)])])}const i=t(r,[["render",a]]);export{i as default};

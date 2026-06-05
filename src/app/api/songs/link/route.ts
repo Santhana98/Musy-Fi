@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { saveAudioFile } from '@/lib/storage';
-import { getYtDlpMetadata, getYtDlpAudioStream } from '@/lib/ytdlp';
+import { resolveYoutubeMetadata, resolveYoutubeAudioStream } from '@/lib/youtubeResolver';
 
 export const maxDuration = 60;
 
@@ -54,11 +54,11 @@ export async function POST(request: Request) {
       type = 'youtube';
       thumbnail = `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
       
-      // Try to fetch real YouTube metadata via yt-dlp
+      // Try to fetch real YouTube metadata via public APIs
       try {
-        const metadata = await getYtDlpMetadata(url);
+        const metadata = await resolveYoutubeMetadata(url);
         resolvedTitle = title || metadata.title || `YouTube Track (${ytId})`;
-        resolvedArtist = artist || metadata.uploader || metadata.channel || 'YouTube';
+        resolvedArtist = artist || metadata.artist || 'YouTube';
         resolvedDuration = metadata.duration || 0;
       } catch (err) {
         console.warn('Could not fetch YouTube info via yt-dlp, falling back to defaults:', err);
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
     ) {
       try {
         console.log(`Importing YouTube audio for background playback: ${videoId}`);
-        const stream = await getYtDlpAudioStream(url);
+        const stream = await resolveYoutubeAudioStream(url);
         const chunks: Buffer[] = [];
         for await (const chunk of stream) {
           chunks.push(Buffer.from(chunk));

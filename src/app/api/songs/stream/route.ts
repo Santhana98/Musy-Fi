@@ -8,7 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import { Readable } from 'stream';
 import ytdl from '@distube/ytdl-core';
-import { getYtDlpDirectUrl } from '@/lib/ytdlp';
+import { resolveYoutubeDirectUrl } from '@/lib/youtubeResolver';
 
 export async function GET(request: NextRequest) {
   try {
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     if (song.type === 'youtube') {
       try {
         const videoUrl = `https://www.youtube.com/watch?v=${song.sourceUrl}`;
-        const directUrl = await getYtDlpDirectUrl(videoUrl);
+        const directUrl = await resolveYoutubeDirectUrl(videoUrl);
 
         const headers: Record<string, string> = {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',

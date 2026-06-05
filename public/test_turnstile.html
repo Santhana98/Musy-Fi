@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Turnstile Test</title>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</head>
+<body>
+    <h1>Testing ClickAPI Turnstile Sitekey</h1>
+    <div class="cf-turnstile" data-sitekey="0x4AAAAAAB7R_--firW0k1YT" data-callback="onSuccess"></div>
+    <script>
+        function onSuccess(token) {
+            console.log("Turnstile Token generated successfully:", token);
+            alert("Token: " + token);
+        }
+    </script>
+</body>
+</html>

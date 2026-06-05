@@ -1,0 +1,2 @@
+// Attrs: 
+window.__NUXT__={};window.__NUXT__.config={public:{turnstile:{siteKey:"0x4AAAAAAB7R_--firW0k1YT"},apiBase:"https://api.cdnframe.com",appBase:"https://clickapi.net",navbarTitle:"YouTube Converter API",copyright:"Your Converter Site",apiVersionName:"API Version: 2.3.2-adblmone",disableAutoDownload:true,popupAdsUrl:"",downloadAdsUrl:"https://ey43.com/4/10078901","nuxt-scripts":{version:"",defaultScriptOptions:{trigger:"onNuxtReady"}}},app:{baseURL:"/",buildId:"66f6a120-87fd-4a89-8e4a-03866dff5028",buildAssetsDir:"/_nuxt/",cdnURL:""}}
