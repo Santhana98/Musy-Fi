@@ -26,6 +26,7 @@ interface PlayerContextType {
   playbackMode: 'normal' | 'shuffle' | 'repeat';
   activeView: ActiveView;
   activePlaylistId: string | null;
+  trackRestartTrigger: number;
   
   // Playback Control Functions
   playTrack: (track: Song, newQueueContext?: Song[]) => void;
@@ -59,6 +60,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [activeView, setActiveViewState] = useState<ActiveView>('home');
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [originalQueue, setOriginalQueue] = useState<Song[]>([]); // for restoring shuffle order
+  const [trackRestartTrigger, setTrackRestartTrigger] = useState<number>(0);
 
   // Load volume from local storage on mount
   useEffect(() => {
@@ -75,6 +77,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   };
 
   const playTrack = (track: Song, newQueueContext?: Song[]) => {
+    if (currentTrack && currentTrack.id === track.id) {
+      // Force track restart if tapped again
+      setTrackRestartTrigger(Date.now());
+      setIsPlaying(true);
+      setProgress(0);
+      return;
+    }
+
     if (newQueueContext && newQueueContext.length > 0) {
       setQueueState(newQueueContext);
       setOriginalQueue(newQueueContext);
@@ -204,6 +214,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         playbackMode,
         activeView,
         activePlaylistId,
+        trackRestartTrigger,
         playTrack,
         togglePlay,
         setPlaying,

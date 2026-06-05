@@ -42,6 +42,7 @@ export default function MusicPlayer() {
     setPlaybackMode,
     nextTrack,
     prevTrack,
+    trackRestartTrigger,
   } = usePlayer();
 
   const [isMuted, setIsMuted] = useState(false);
@@ -214,6 +215,33 @@ export default function MusicPlayer() {
       console.warn('Could not set mediaSession position state:', err);
     }
   }, [isPlaying, progress, duration, currentTrack]);
+
+  // 5. Force track restart on trigger (tapping the currently playing song again)
+  useEffect(() => {
+    if (trackRestartTrigger === 0 || !currentTrack) return;
+    
+    console.log(`[MusicPlayer] Restarting current track "${currentTrack.title}" on tap...`);
+    
+    if (isVideoTrack && ytPlayerRef.current) {
+      try {
+        ytPlayerRef.current.seekTo(0, 'seconds');
+      } catch (err) {
+        console.warn('Video player seek failed on tap:', err);
+      }
+    } else if (audioRef.current) {
+      try {
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().catch(err => {
+          console.warn('Audio play failed on tap:', err);
+        });
+      } catch (err) {
+        console.warn('Audio player seek failed on tap:', err);
+      }
+    }
+    
+    setProgress(0);
+    setPlaying(true);
+  }, [trackRestartTrigger]);
 
   if (!currentTrack) return null;
 
