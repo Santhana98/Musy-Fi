@@ -43,6 +43,8 @@ export default function MusicPlayer() {
     nextTrack,
     prevTrack,
     trackRestartTrigger,
+    queue,
+    currentIndex,
   } = usePlayer();
 
   const [isMuted, setIsMuted] = useState(false);
@@ -51,8 +53,51 @@ export default function MusicPlayer() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [useVideoFallback, setUseVideoFallback] = useState(false);
 
+  const [streamUrl, setStreamUrl] = useState<string>('');
+  const [nextTrackUrl, setNextTrackUrl] = useState<string>('');
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
+
+  // Synchronize stream URL and next track preloading URL
+  useEffect(() => {
+    if (!currentTrack) {
+      setStreamUrl('');
+      return;
+    }
+    const token = (session?.user as any)?.id || '';
+    const proxyUrl = `/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`;
+
+    if (currentTrack.type === 'google') {
+      // Direct CDN url for sub-second streaming
+      const cdnUrl = `https://lh3.googleusercontent.com/d/${currentTrack.sourceUrl}`;
+      setStreamUrl(cdnUrl);
+    } else {
+      setStreamUrl(proxyUrl);
+    }
+  }, [currentTrack, session]);
+
+  useEffect(() => {
+    if (queue.length === 0 || currentIndex === -1) {
+      setNextTrackUrl('');
+      return;
+    }
+    const nextIdx = currentIndex + 1;
+    if (nextIdx < queue.length) {
+      const nextTrackObj = queue[nextIdx];
+      const token = (session?.user as any)?.id || '';
+      
+      if (nextTrackObj.type === 'google') {
+        setNextTrackUrl(`https://lh3.googleusercontent.com/d/${nextTrackObj.sourceUrl}`);
+      } else if (nextTrackObj.type === 'mp3') {
+        setNextTrackUrl(`/api/songs/stream?id=${nextTrackObj.id}${token ? `&token=${token}` : ''}`);
+      } else {
+        setNextTrackUrl('');
+      }
+    } else {
+      setNextTrackUrl('');
+    }
+  }, [queue, currentIndex, session]);
 
   const isYouTubeTrack = currentTrack?.type === 'youtube';
   const isVimeoTrack = currentTrack?.type === 'vimeo';
@@ -270,6 +315,30 @@ export default function MusicPlayer() {
 
   const handleAudioError = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
     console.error('HTML5 Audio error encountered:', e.currentTarget.error);
+    
+    if (currentTrack) {
+      const token = (session?.user as any)?.id || '';
+      const proxyUrl = `/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`;
+      
+      if (streamUrl !== proxyUrl) {
+        console.log('Direct CDN stream failed. Falling back to secure proxy URL:', proxyUrl);
+        setStreamUrl(proxyUrl);
+        
+        // Force reload and play
+        setTimeout(() => {
+          if (audioRef.current) {
+            audioRef.current.load();
+            if (isPlaying) {
+              audioRef.current.play().catch(err => {
+                console.warn('Playback resume on fallback URL failed:', err);
+              });
+            }
+          }
+        }, 50);
+        return;
+      }
+    }
+    
     if (isYouTubeTrack) {
       setUseVideoFallback(true);
     }
@@ -323,8 +392,7 @@ export default function MusicPlayer() {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  const token = (session?.user as any)?.id || '';
-  const streamUrl = `/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`;
+
 
   return (
     <>
@@ -333,12 +401,18 @@ export default function MusicPlayer() {
         <audio
           ref={audioRef}
           src={streamUrl}
+          preload="auto"
           onTimeUpdate={handleAudioTimeUpdate}
           onLoadedMetadata={handleAudioLoadedMetadata}
           onEnded={handleAudioEnded}
           onCanPlay={handleAudioCanPlay}
           onError={handleAudioError}
         />
+      )}
+
+      {/* Background audio preloading tag for the next song in queue */}
+      {nextTrackUrl && (
+        <audio src={nextTrackUrl} preload="auto" muted style={{ display: 'none' }} />
       )}
 
       {/* Invisible YouTube / Video player satisfying size and visibility rules */}
