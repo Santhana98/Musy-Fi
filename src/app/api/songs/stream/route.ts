@@ -68,9 +68,74 @@ export async function GET(request: NextRequest) {
       try {
         const videoUrl = `https://www.youtube.com/watch?v=${song.sourceUrl}`;
         const directUrl = await resolveYoutubeDirectUrl(videoUrl);
-        return NextResponse.redirect(directUrl);
+
+        // Instead of redirecting to the googlevideo.com CDN (which blocks the client due to IP-locking),
+        // we proxy the request, passing through the Range header if requested.
+        const requestHeaders: Record<string, string> = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        };
+        if (range) {
+          requestHeaders['Range'] = range;
+        }
+
+        const proxiedResponse = await fetch(directUrl, {
+          headers: requestHeaders,
+        });
+
+        if (!proxiedResponse.ok) {
+          throw new Error(`Upstream returned status ${proxiedResponse.status} ${proxiedResponse.statusText}`);
+        }
+
+        if (!proxiedResponse.body) {
+          throw new Error('Response body is empty');
+        }
+
+        // Wrap the response body in a ReadableStream to stream it back to the client
+        const webStream = new ReadableStream({
+          start(controller) {
+            const reader = proxiedResponse.body?.getReader();
+            if (!reader) {
+              controller.close();
+              return;
+            }
+            const activeReader = reader;
+            function push() {
+              activeReader.read().then(({ done, value }) => {
+                if (done) {
+                  controller.close();
+                  return;
+                }
+                controller.enqueue(value);
+                push();
+              }).catch(err => {
+                controller.error(err);
+              });
+            }
+            push();
+          }
+        });
+
+        const responseHeaders = new Headers();
+        responseHeaders.set('Content-Type', proxiedResponse.headers.get('content-type') || 'audio/mpeg');
+        responseHeaders.set('Accept-Ranges', 'bytes');
+        responseHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+        const contentRange = proxiedResponse.headers.get('content-range');
+        if (contentRange) {
+          responseHeaders.set('Content-Range', contentRange);
+        }
+
+        const contentLength = proxiedResponse.headers.get('content-length');
+        if (contentLength) {
+          responseHeaders.set('Content-Length', contentLength);
+        }
+
+        return new Response(webStream, {
+          status: proxiedResponse.status,
+          headers: responseHeaders,
+        });
       } catch (err: any) {
-        console.error('Failed to resolve YouTube URL:', err);
+        console.error('Failed to proxy YouTube stream:', err);
         return new NextResponse(`Failed to stream YouTube: ${err.message}`, { status: 500 });
       }
     }
