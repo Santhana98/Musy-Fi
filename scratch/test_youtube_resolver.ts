@@ -2,7 +2,7 @@ import { resolveYoutubeMetadata, resolveYoutubeAudioStream, resolveYoutubeDirect
 import fs from 'fs';
 import path from 'path';
 
-const testUrl = 'https://www.youtube.com/watch?v=tKZmHEyYlbA';
+const testUrl = 'https://www.youtube.com/watch?v=btxyjaUVerQ';
 
 async function runTest() {
   console.log('=== TESTING YOUTUBE RESOLVER ===');

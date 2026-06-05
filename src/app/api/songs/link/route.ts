@@ -88,12 +88,16 @@ export async function POST(request: Request) {
     let finalSourceUrl = videoId;
     let backgroundReady = false;
 
-    if (
-      type === 'youtube' &&
-      (resolvedDuration === 0 || resolvedDuration <= MAX_BACKGROUND_IMPORT_SECONDS)
-    ) {
+    if (type === 'youtube') {
+      if (resolvedDuration > MAX_BACKGROUND_IMPORT_SECONDS) {
+        return NextResponse.json(
+          { error: `Track duration (${resolvedDuration}s) exceeds the maximum allowed import length of ${MAX_BACKGROUND_IMPORT_SECONDS / 60} minutes.` },
+          { status: 400 }
+        );
+      }
+
       try {
-        console.log(`Importing YouTube audio for background playback: ${videoId}`);
+        console.log('Conversion Started');
         const stream = await resolveYoutubeAudioStream(url);
         const chunks: Buffer[] = [];
         for await (const chunk of stream) {
@@ -101,27 +105,37 @@ export async function POST(request: Request) {
         }
         const buffer = Buffer.concat(chunks);
         
-        if (buffer.length > 0) {
-          console.log(`Saving YouTube audio file to storage (${buffer.length} bytes)...`);
-          // Determine a clean file name
-          const cleanTitle = resolvedTitle.replace(/[^a-zA-Z0-9.-]/g, '_');
-          const uploadResult = await saveAudioFile(
-            userId,
-            `${cleanTitle}.m4a`,
-            buffer,
-            'audio/mp4',
-            accessToken
-          );
-          finalType = uploadResult.storageType;
-          finalSourceUrl = uploadResult.sourceUrl;
-          backgroundReady = true;
-          console.log(`YouTube audio imported for background playback: type=${finalType}, sourceUrl=${finalSourceUrl}`);
+        if (buffer.length === 0) {
+          throw new Error('Downloaded audio buffer is empty');
         }
-      } catch (downloadErr) {
-        console.warn('Could not import YouTube audio, falling back to embedded YouTube playback:', downloadErr);
+        console.log('Conversion Completed');
+
+        console.log('Drive Upload Started');
+        // Determine a clean file name
+        const cleanTitle = resolvedTitle.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const uploadResult = await saveAudioFile(
+          userId,
+          `${cleanTitle}.m4a`,
+          buffer,
+          'audio/mp4',
+          accessToken
+        );
+
+        if (uploadResult.storageType !== 'google') {
+          throw new Error('Upload to Google Drive failed (fell back to local storage). Please ensure your Google Drive is connected and active.');
+        }
+
+        finalType = uploadResult.storageType;
+        finalSourceUrl = uploadResult.sourceUrl;
+        backgroundReady = true;
+        console.log('Drive Upload Completed');
+      } catch (importErr: any) {
+        console.error('Import failed:', importErr.message || importErr);
+        return NextResponse.json(
+          { error: importErr.message || 'Failed to import and convert YouTube audio track to Google Drive' },
+          { status: 500 }
+        );
       }
-    } else if (type === 'youtube') {
-      console.warn(`Skipping background import because duration is too long: ${resolvedDuration}s`);
     }
 
     // Save to DB
@@ -136,6 +150,7 @@ export async function POST(request: Request) {
         userId,
       },
     });
+    console.log('Library Entry Created');
 
     return NextResponse.json({ success: true, song, backgroundReady });
   } catch (error: any) {

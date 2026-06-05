@@ -1,5 +1,19 @@
 import { Readable } from 'stream';
 import { getYtDlpDirectUrl, getYtDlpAudioStream, getYtDlpMetadata } from './ytdlp';
+import { Innertube, Platform } from 'youtubei.js';
+
+// Setup signature deciphering platform shim for Node 24+ compatibility
+Platform.shim.eval = async (data: any) => {
+  return new Function(data.output || data)();
+};
+
+let ytInstance: Innertube | null = null;
+async function getInnertube(): Promise<Innertube> {
+  if (!ytInstance) {
+    ytInstance = await Innertube.create();
+  }
+  return ytInstance;
+}
 
 const COBALT_INSTANCES = [
   'https://subito-c.meowing.de',
@@ -42,7 +56,30 @@ export async function resolveYoutubeMetadata(url: string): Promise<YoutubeMetada
     throw new Error('Invalid YouTube URL');
   }
 
-  // Try yt-dlp first for accurate metadata (including duration)
+  // Try youtubei.js (Innertube) first for accurate metadata
+  try {
+    console.log(`[youtubeResolver] Fetching metadata via youtubei.js: ${videoId}`);
+    const yt = await getInnertube();
+    const info = await yt.getBasicInfo(videoId);
+    if (info && info.basic_info) {
+      const title = info.basic_info.title || `YouTube Track (${videoId})`;
+      const artist = info.basic_info.author || 'YouTube';
+      const duration = info.basic_info.duration || 0;
+      const thumbnail = info.basic_info.thumbnail && info.basic_info.thumbnail.length > 0
+        ? info.basic_info.thumbnail[0].url
+        : `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+      return {
+        title,
+        artist,
+        duration,
+        thumbnail,
+      };
+    }
+  } catch (err: any) {
+    console.warn(`[youtubeResolver] youtubei.js metadata resolution failed:`, err.message);
+  }
+
+  // Try yt-dlp fallback for metadata (including duration)
   try {
     console.log(`[youtubeResolver] Fetching metadata via yt-dlp: ${url}`);
     const data = await getYtDlpMetadata(url);
@@ -159,7 +196,23 @@ export async function resolveYoutubeAudioStream(url: string): Promise<Readable> 
     throw new Error('Invalid YouTube URL');
   }
 
-  // 1. Try yt-dlp first (extremely reliable, native stream)
+  // 1. Try youtubei.js (Innertube) first (native, direct streaming)
+  try {
+    console.log(`[youtubeResolver] Requesting audio stream via youtubei.js: ${videoId}`);
+    const yt = await getInnertube();
+    const stream = await yt.download(videoId, {
+      type: 'audio',
+      quality: 'best',
+      client: 'YTMUSIC'
+    });
+    if (stream) {
+      return Readable.fromWeb(stream as any);
+    }
+  } catch (err: any) {
+    console.warn(`[youtubeResolver] youtubei.js streaming failed:`, err.message);
+  }
+
+  // Try yt-dlp fallback (extremely reliable, native stream)
   try {
     console.log(`[youtubeResolver] Requesting audio stream via yt-dlp: ${url}`);
     const stream = await getYtDlpAudioStream(url);
@@ -263,7 +316,24 @@ export async function resolveYoutubeDirectUrl(url: string): Promise<string> {
     throw new Error('Invalid YouTube URL');
   }
 
-  // 1. Try yt-dlp first (extremely reliable, cached)
+  // 1. Try youtubei.js (Innertube) first (resolves and deciphers direct URL)
+  try {
+    console.log(`[youtubeResolver] Resolving direct URL via youtubei.js: ${videoId}`);
+    const yt = await getInnertube();
+    const info = await yt.getInfo(videoId);
+    const format = info.chooseFormat({ type: 'audio', quality: 'best' });
+    if (format) {
+      const directUrl = await format.decipher(yt.session.player);
+      if (directUrl) {
+        console.log(`[youtubeResolver] youtubei.js direct URL resolved successfully`);
+        return directUrl;
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[youtubeResolver] youtubei.js direct URL resolution failed:`, err.message);
+  }
+
+  // Try yt-dlp fallback (extremely reliable, cached)
   try {
     console.log(`[youtubeResolver] Resolving direct URL via yt-dlp: ${url}`);
     const directUrl = await getYtDlpDirectUrl(url);
