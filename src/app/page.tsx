@@ -17,6 +17,14 @@ export default function DashboardPage() {
   
   // Search query state managed in the dashboard shell and shared between Header and MainView
   const [searchQuery, setSearchQuery] = useState('');
+  const [hasLoaded, setHasLoaded] = useState(false);
+
+  // Mark app as loaded once the user is authenticated
+  useEffect(() => {
+    if (status === 'authenticated') {
+      setHasLoaded(true);
+    }
+  }, [status]);
 
   // Protect route
   useEffect(() => {
@@ -25,7 +33,7 @@ export default function DashboardPage() {
     }
   }, [status, router]);
 
-  if (status === 'loading') {
+  if (status === 'loading' && !hasLoaded) {
     return (
       <div className="min-h-screen bg-bg-base flex flex-col items-center justify-center gap-4 text-zinc-500">
         <img src="/logo.jpg" alt="Musi-Fi Logo" className="w-12 h-12 rounded-full object-cover animate-pulse" />
