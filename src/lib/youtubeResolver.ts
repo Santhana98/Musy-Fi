@@ -1,4 +1,5 @@
 import { Readable } from 'stream';
+import { getYtDlpDirectUrl, getYtDlpAudioStream, getYtDlpMetadata } from './ytdlp';
 
 const COBALT_INSTANCES = [
   'https://subito-c.meowing.de',
@@ -39,6 +40,23 @@ export async function resolveYoutubeMetadata(url: string): Promise<YoutubeMetada
   const videoId = getYoutubeId(url);
   if (!videoId) {
     throw new Error('Invalid YouTube URL');
+  }
+
+  // Try yt-dlp first for accurate metadata (including duration)
+  try {
+    console.log(`[youtubeResolver] Fetching metadata via yt-dlp: ${url}`);
+    const data = await getYtDlpMetadata(url);
+    if (data) {
+      const thumbnail = data.thumbnail || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+      return {
+        title: data.title || `YouTube Track (${videoId})`,
+        artist: data.uploader || 'YouTube',
+        duration: data.duration || 0,
+        thumbnail: thumbnail,
+      };
+    }
+  } catch (err: any) {
+    console.warn(`[youtubeResolver] yt-dlp metadata resolution failed:`, err.message);
   }
 
   // 1. Try YouTube oEmbed (fast, official, no auth key, returns title, artist, thumbnail)
@@ -141,7 +159,18 @@ export async function resolveYoutubeAudioStream(url: string): Promise<Readable> 
     throw new Error('Invalid YouTube URL');
   }
 
-  // 1. Try Cobalt first (often converts to MP3/M4A directly and serves fast)
+  // 1. Try yt-dlp first (extremely reliable, native stream)
+  try {
+    console.log(`[youtubeResolver] Requesting audio stream via yt-dlp: ${url}`);
+    const stream = await getYtDlpAudioStream(url);
+    if (stream) {
+      return stream;
+    }
+  } catch (err: any) {
+    console.warn(`[youtubeResolver] yt-dlp streaming failed:`, err.message);
+  }
+
+  // 2. Try Cobalt first (often converts to MP3/M4A directly and serves fast)
   for (const instance of COBALT_INSTANCES) {
     try {
       console.log(`[youtubeResolver] Requesting audio stream from Cobalt: ${instance}`);
@@ -232,6 +261,17 @@ export async function resolveYoutubeDirectUrl(url: string): Promise<string> {
   const videoId = getYoutubeId(url);
   if (!videoId) {
     throw new Error('Invalid YouTube URL');
+  }
+
+  // 1. Try yt-dlp first (extremely reliable, cached)
+  try {
+    console.log(`[youtubeResolver] Resolving direct URL via yt-dlp: ${url}`);
+    const directUrl = await getYtDlpDirectUrl(url);
+    if (directUrl) {
+      return directUrl;
+    }
+  } catch (err: any) {
+    console.warn(`[youtubeResolver] yt-dlp direct URL resolution failed:`, err.message);
   }
 
   // Try Cobalt first

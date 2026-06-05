@@ -97,37 +97,58 @@ export async function GET(request: NextRequest) {
 
     if (song.type === 'google') {
       try {
-        const directUrl = `https://drive.google.com/uc?id=${song.sourceUrl}&export=download`;
-
-        const headers: Record<string, string> = {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        };
-        if (range) {
-          headers['Range'] = range;
+        const drive = await getGoogleDriveClient(userId);
+        if (!drive) {
+          return new NextResponse('Google Drive client not authenticated', { status: 401 });
         }
 
-        const response = await fetch(directUrl, { headers });
+        const requestHeaders: Record<string, string> = {};
+        if (range) {
+          requestHeaders['Range'] = range;
+        }
+
+        const driveResponse = await drive.files.get(
+          { fileId: song.sourceUrl, alt: 'media' },
+          { 
+            responseType: 'stream',
+            headers: requestHeaders,
+          }
+        );
+
+        const nodeStream = driveResponse.data as any;
+        const webStream = new ReadableStream({
+          start(controller) {
+            nodeStream.on('data', (chunk: any) => controller.enqueue(chunk));
+            nodeStream.on('end', () => controller.close());
+            nodeStream.on('error', (err: any) => controller.error(err));
+          },
+          cancel() {
+            if (typeof nodeStream.destroy === 'function') {
+              nodeStream.destroy();
+            }
+          }
+        });
 
         const responseHeaders = new Headers();
         
         // Pass content type from Google, default to audio/mpeg
-        const contentType = response.headers.get('content-type') || 'audio/mpeg';
+        const contentType = driveResponse.headers['content-type'] || 'audio/mpeg';
         responseHeaders.set('Content-Type', contentType);
         responseHeaders.set('Accept-Ranges', 'bytes');
         responseHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
 
-        const contentRange = response.headers.get('content-range');
+        const contentRange = driveResponse.headers['content-range'];
         if (contentRange) {
           responseHeaders.set('Content-Range', contentRange);
         }
 
-        const contentLength = response.headers.get('content-length');
+        const contentLength = driveResponse.headers['content-length'];
         if (contentLength) {
           responseHeaders.set('Content-Length', contentLength);
         }
         
-        return new Response(response.body, {
-          status: response.status,
+        return new Response(webStream, {
+          status: driveResponse.status,
           headers: responseHeaders,
         });
       } catch (err: any) {

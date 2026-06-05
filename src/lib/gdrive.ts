@@ -24,18 +24,19 @@ export async function getGoogleDriveClient(userId: string, accessToken?: string)
   let refresh_token = undefined;
   let account: any = null;
 
-  if (!token) {
-    // Find the Google account associated with this user
-    account = await prisma.account.findFirst({
-      where: {
-        userId,
-        provider: 'google',
-      },
-    });
+  // Always try to load the account from DB to fetch the refresh token
+  // because NextAuth session access token might be expired and doesn't contain refresh token
+  account = await prisma.account.findFirst({
+    where: {
+      userId,
+      provider: 'google',
+    },
+  });
 
-    if (account && account.access_token) {
+  if (account) {
+    refresh_token = account.refresh_token || undefined;
+    if (!token && account.access_token) {
       token = account.access_token;
-      refresh_token = account.refresh_token || undefined;
     }
   }
 
