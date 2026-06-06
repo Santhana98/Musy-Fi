@@ -22,6 +22,9 @@ export const metadata: Metadata = {
     title: "Musy-Fi",
     statusBarStyle: "black-translucent",
   },
+  icons: {
+    apple: "/logo-192.png",
+  },
 };
 
 export default function RootLayout({
