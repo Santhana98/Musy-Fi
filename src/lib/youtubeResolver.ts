@@ -86,134 +86,127 @@ export async function resolveYoutubeMetadata(url: string): Promise<YoutubeMetada
     throw new Error('Invalid YouTube URL');
   }
 
-  // Try youtubei.js (Innertube) first for accurate metadata
-  try {
-    console.log(`[youtubeResolver] Fetching metadata via youtubei.js: ${videoId}`);
-    const yt = await getInnertube();
-    const info = await yt.getBasicInfo(videoId);
-    if (info && info.basic_info) {
-      const title = info.basic_info.title || `YouTube Track (${videoId})`;
-      const artist = info.basic_info.author || 'YouTube';
-      const duration = info.basic_info.duration || 0;
-      const thumbnail = info.basic_info.thumbnail && info.basic_info.thumbnail.length > 0
-        ? info.basic_info.thumbnail[0].url
-        : `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
-      return {
-        title,
-        artist,
-        duration,
-        thumbnail,
-      };
-    }
-  } catch (err: any) {
-    console.warn(`[youtubeResolver] youtubei.js metadata resolution failed:`, err.message);
-  }
+  const defaultResult = {
+    title: `YouTube Track (${videoId})`,
+    artist: 'YouTube',
+    duration: 0,
+    thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+  };
 
-  // Try yt-dlp fallback for metadata (including duration)
-  try {
-    console.log(`[youtubeResolver] Fetching metadata via yt-dlp: ${url}`);
-    const data = await getYtDlpMetadata(url);
-    if (data) {
-      const thumbnail = data.thumbnail || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
-      return {
-        title: data.title || `YouTube Track (${videoId})`,
-        artist: data.uploader || 'YouTube',
-        duration: data.duration || 0,
-        thumbnail: thumbnail,
-      };
-    }
-  } catch (err: any) {
-    console.warn(`[youtubeResolver] yt-dlp metadata resolution failed:`, err.message);
-  }
+  let title = '';
+  let artist = '';
+  let duration = 0;
+  let thumbnail = '';
 
-  // 1. Try YouTube oEmbed (fast, official, no auth key, returns title, artist, thumbnail)
+  // 1. Try YouTube oEmbed (fastest and most reliable for title/artist/thumbnail)
   try {
     console.log(`[youtubeResolver] Fetching metadata from YouTube oEmbed for ${videoId}...`);
     const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
-    const res = await fetch(oembedUrl, {
-      signal: AbortSignal.timeout(3000)
-    });
+    const res = await fetch(oembedUrl, { signal: AbortSignal.timeout(5000) });
     if (res.ok) {
       const data = await res.json();
-      console.log(`[youtubeResolver] oEmbed resolution succeeded: "${data.title}" by "${data.author_name}"`);
-      return {
-        title: data.title || `YouTube Track (${videoId})`,
-        artist: data.author_name || 'YouTube',
-        duration: 0, // oEmbed doesn't return duration
-        thumbnail: data.thumbnail_url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-      };
-    } else {
-      console.warn(`[youtubeResolver] oEmbed returned non-ok status: ${res.status}`);
+      if (data.title) title = data.title;
+      if (data.author_name) artist = data.author_name;
+      if (data.thumbnail_url) thumbnail = data.thumbnail_url;
     }
   } catch (err: any) {
     console.warn(`[youtubeResolver] YouTube oEmbed failed:`, err.message);
   }
 
-  // 2. Try Piped (very rich metadata, including duration)
-  for (const instance of PIPED_INSTANCES) {
+  // 1b. Try Noembed (extremely reliable fallback for cloud servers)
+  if (!title) {
     try {
-      console.log(`[youtubeResolver] Fetching metadata from Piped: ${instance}/streams/${videoId}`);
-      const res = await fetch(`${instance}/streams/${videoId}`, {
-        signal: AbortSignal.timeout(4000)
-      });
-      if (!res.ok) {
-        throw new Error(`HTTP Error ${res.status}`);
+      console.log(`[youtubeResolver] Fetching metadata from Noembed for ${videoId}...`);
+      const noembedUrl = `https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}`;
+      const res = await fetch(noembedUrl, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.title) title = data.title;
+        if (data.author_name) artist = data.author_name;
+        if (data.thumbnail_url) thumbnail = data.thumbnail_url;
       }
-      const data = await res.json();
-      return {
-        title: data.title || `YouTube Track (${videoId})`,
-        artist: data.uploader || 'YouTube',
-        duration: data.duration || 0,
-        thumbnail: data.thumbnailUrl || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-      };
     } catch (err: any) {
-      console.warn(`[youtubeResolver] Piped metadata fetch failed for ${instance}:`, err.message);
+      console.warn(`[youtubeResolver] Noembed metadata resolution failed:`, err.message);
     }
   }
 
-  // 3. Try Cobalt fallback
-  for (const instance of COBALT_INSTANCES) {
-    try {
-      console.log(`[youtubeResolver] Fetching metadata from Cobalt: ${instance}`);
-      const res = await fetch(instance, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          url: url,
-          downloadMode: 'audio',
-          audioFormat: 'best',
-        }),
-        signal: AbortSignal.timeout(4000)
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP Error ${res.status}`);
+  // 2. Try ytdl-core to get duration and fallback title
+  try {
+    console.log(`[youtubeResolver] Fetching metadata via ytdl-core: ${videoId}`);
+    const ytdl = require('@distube/ytdl-core');
+    const info = await ytdl.getBasicInfo(url);
+    if (info?.videoDetails) {
+      if (!title) title = info.videoDetails.title;
+      if (!artist) artist = info.videoDetails.author?.name;
+      if (!duration) duration = parseInt(info.videoDetails.lengthSeconds || '0', 10);
+      if (!thumbnail && info.videoDetails.thumbnails?.length) {
+        thumbnail = info.videoDetails.thumbnails[0].url;
       }
+    }
+  } catch (err: any) {
+    console.warn(`[youtubeResolver] ytdl-core metadata resolution failed:`, err.message);
+  }
 
-      const data = await res.json();
-      if (data.status !== 'error' && data.url) {
-        // Cobalt doesn't always return rich metadata, but we can make a sensible default
-        return {
-          title: `YouTube Track (${videoId})`,
-          artist: 'YouTube',
-          duration: 0,
-          thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-        };
+  // 3. Try youtubei.js
+  if (!title || !duration) {
+    try {
+      console.log(`[youtubeResolver] Fetching metadata via youtubei.js: ${videoId}`);
+      const yt = await getInnertube();
+      const info = await yt.getBasicInfo(videoId);
+      if (info && info.basic_info) {
+        if (!title) title = info.basic_info.title || '';
+        if (!artist) artist = info.basic_info.author || '';
+        if (!duration) duration = info.basic_info.duration || 0;
+        if (!thumbnail && info.basic_info.thumbnail && info.basic_info.thumbnail.length > 0) {
+          thumbnail = info.basic_info.thumbnail[0].url;
+        }
       }
     } catch (err: any) {
-      console.warn(`[youtubeResolver] Cobalt metadata fetch failed for ${instance}:`, err.message);
+      console.warn(`[youtubeResolver] youtubei.js metadata resolution failed:`, err.message);
     }
   }
 
-  // Final fallback using standard structure if everything fails
+  // 4. Try yt-dlp
+  if (!title || !duration) {
+    try {
+      console.log(`[youtubeResolver] Fetching metadata via yt-dlp: ${url}`);
+      const data = await getYtDlpMetadata(url);
+      if (data) {
+        if (!title) title = data.title || '';
+        if (!artist) artist = data.uploader || '';
+        if (!duration) duration = data.duration || 0;
+        if (!thumbnail) thumbnail = data.thumbnail || '';
+      }
+    } catch (err: any) {
+      console.warn(`[youtubeResolver] yt-dlp metadata resolution failed:`, err.message);
+    }
+  }
+
+  // 5. Try Piped
+  if (!title || !duration) {
+    for (const instance of PIPED_INSTANCES) {
+      try {
+        console.log(`[youtubeResolver] Fetching metadata from Piped: ${instance}/streams/${videoId}`);
+        const res = await fetch(`${instance}/streams/${videoId}`, { signal: AbortSignal.timeout(4000) });
+        if (res.ok) {
+          const data = await res.json();
+          if (!title) title = data.title || '';
+          if (!artist) artist = data.uploader || '';
+          if (!duration) duration = data.duration || 0;
+          if (!thumbnail) thumbnail = data.thumbnailUrl || '';
+          break;
+        }
+      } catch (err: any) {
+        console.warn(`[youtubeResolver] Piped metadata fetch failed for ${instance}:`, err.message);
+      }
+    }
+  }
+
   return {
-    title: `YouTube Track (${videoId})`,
-    artist: 'YouTube',
-    duration: 0,
-    thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+    title: title || defaultResult.title,
+    artist: artist || defaultResult.artist,
+    duration: duration || defaultResult.duration,
+    thumbnail: thumbnail || defaultResult.thumbnail,
   };
 }
 

@@ -127,6 +127,9 @@ export async function POST(request: Request) {
 
         finalType = uploadResult.storageType;
         finalSourceUrl = uploadResult.sourceUrl;
+        if (uploadResult.metadata && uploadResult.metadata.duration) {
+          resolvedDuration = uploadResult.metadata.duration;
+        }
         backgroundReady = true;
         console.log('Drive Upload Completed');
       } catch (importErr: any) {
