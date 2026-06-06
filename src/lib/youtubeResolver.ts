@@ -40,7 +40,7 @@ Platform.shim.eval = async (data: any) => {
 let ytInstance: Innertube | null = null;
 async function getInnertube(): Promise<Innertube> {
   if (!ytInstance) {
-    ytInstance = await Innertube.create();
+    ytInstance = await Innertube.create({ fetch: globalThis.fetch });
   }
   return ytInstance;
 }
