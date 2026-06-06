@@ -92,8 +92,8 @@ export default function Sidebar() {
     <div className="hidden md:flex w-64 bg-bg-sidebar flex-col h-full border-r border-border-muted select-none">
       {/* Brand Logo */}
       <div className="p-6 flex items-center gap-3 cursor-pointer" onClick={() => setActiveView('home')}>
-        <img src="/logo.jpg" alt="Musi-Fi Logo" className="w-8 h-8 rounded-full object-cover animate-spin" style={{ animationDuration: '15s' }} />
-        <span className="text-xl font-bold tracking-tight text-[#D62828]">Musi-Fi</span>
+        <img src="/logo.jpg" alt="Musy-Fi Logo" className="w-8 h-8 rounded-full object-cover animate-spin" style={{ animationDuration: '15s' }} />
+        <span className="text-xl font-bold tracking-tight text-[#D62828]">Musy-Fi</span>
       </div>
 
       {/* Primary Navigation */}

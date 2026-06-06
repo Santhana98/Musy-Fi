@@ -290,7 +290,7 @@ export default function MusicPlayer() {
     navigator.mediaSession.metadata = new window.MediaMetadata({
       title: currentTrack.title,
       artist: currentTrack.artist,
-      album: 'Musi-Fi Cloud Library',
+      album: 'Musy-Fi Cloud Library',
       artwork: currentTrack.thumbnail 
         ? [{ src: currentTrack.thumbnail, sizes: '300x300', type: 'image/jpeg' }]
         : [{ src: '/placeholder-artwork.jpg', sizes: '300x300', type: 'image/jpeg' }]

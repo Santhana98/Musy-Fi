@@ -58,7 +58,7 @@ export default function Header({ searchQuery = '', setSearchQuery }: HeaderProps
       {/* User Session Profile controls */}
       <div className="flex items-center gap-4">
         {session ? (
-          <div className="flex items-center gap-3 bg-black/40 hover:bg-black/60 border border-zinc-900 rounded-full pl-2 pr-2 sm:pr-4 py-1.5 transition-all group relative cursor-pointer">
+          <div className="flex items-center gap-3 bg-black/40 hover:bg-black/60 border border-zinc-900 rounded-full pl-2 pr-3 sm:pr-4 py-1.5 transition-all group relative cursor-pointer">
             {session.user?.image ? (
               <img 
                 src={session.user.image} 
@@ -70,7 +70,7 @@ export default function Header({ searchQuery = '', setSearchQuery }: HeaderProps
                 <User className="w-4 h-4 text-zinc-400" />
               </div>
             )}
-            <span className="text-sm font-semibold text-zinc-200 group-hover:text-white truncate max-w-[120px] hidden sm:inline">
+            <span className="text-sm font-semibold text-zinc-200 group-hover:text-white truncate max-w-[80px] sm:max-w-[120px]">
               {session.user?.name || session.user?.email}
             </span>
 

@@ -69,8 +69,8 @@ export default function ResetPasswordPage() {
         
         {/* Brand */}
         <div className="flex items-center gap-3 mb-8 cursor-pointer" onClick={() => router.push('/login')}>
-          <img src="/logo.jpg" alt="Musi-Fi Logo" className="w-10 h-10 rounded-full object-cover" />
-          <span className="text-2xl font-black tracking-tight text-[#D62828]">Musi-Fi</span>
+          <img src="/logo.jpg" alt="Musy-Fi Logo" className="w-10 h-10 rounded-full object-cover" />
+          <span className="text-2xl font-black tracking-tight text-[#D62828]">Musy-Fi</span>
         </div>
 
         <div className="text-center mb-6 w-full">

@@ -82,7 +82,7 @@ export default function LoginPage() {
       const choice = await installPrompt.userChoice;
 
       if (choice.outcome === 'accepted') {
-        setInstallMsg('Installing Musi-Fi as a standalone app...');
+        setInstallMsg('Installing Musy-Fi as a standalone app...');
       } else {
         setInstallMsg('Install was cancelled. You can try again anytime.');
       }
@@ -165,8 +165,8 @@ export default function LoginPage() {
   if (status === 'loading') {
     return (
       <div className="min-h-screen bg-bg-base flex flex-col items-center justify-center gap-4 text-zinc-500">
-        <img src="/logo.jpg" alt="Musi-Fi Logo" className="w-12 h-12 rounded-full object-cover animate-pulse" />
-        <span className="text-sm font-semibold tracking-wide animate-pulse">Loading Musi-Fi...</span>
+        <img src="/logo.jpg" alt="Musy-Fi Logo" className="w-12 h-12 rounded-full object-cover animate-pulse" />
+        <span className="text-sm font-semibold tracking-wide animate-pulse">Loading Musy-Fi...</span>
       </div>
     );
   }
@@ -186,8 +186,8 @@ export default function LoginPage() {
         
         {/* Brand */}
         <div className="flex items-center gap-3 mb-8 cursor-default">
-          <img src="/logo.jpg" alt="Musi-Fi Logo" className="w-10 h-10 rounded-full object-cover" />
-          <span className="text-2xl font-black tracking-tight text-[#D62828]">Musi-Fi</span>
+          <img src="/logo.jpg" alt="Musy-Fi Logo" className="w-10 h-10 rounded-full object-cover" />
+          <span className="text-2xl font-black tracking-tight text-[#D62828]">Musy-Fi</span>
         </div>
 
         <div className="text-center mb-6">

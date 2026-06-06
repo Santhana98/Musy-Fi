@@ -230,7 +230,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
       
       const accessToken = (session?.user as any)?.accessToken;
       if (accessToken) {
-        // 1. Get the user's Google Drive Musi-Fi folder ID from backend
+        // 1. Get the user's Google Drive Musy-Fi folder ID from backend
         setUploadProgress(10);
         const folderRes = await fetch('/api/songs/upload');
         if (!folderRes.ok) {
@@ -1197,7 +1197,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
       {activeView === 'upload' && (
         <div className="space-y-8 animate-fade-in max-w-2xl mx-auto pt-6">
           <div>
-            <h1 className="text-2xl font-bold text-white mb-2">Add Music to Musi-Fi</h1>
+            <h1 className="text-2xl font-bold text-white mb-2">Add Music to Musy-Fi</h1>
             <p className="text-xs text-zinc-400">Import your audio files (MP3s) directly to your cloud storage or paste video streaming links.</p>
           </div>
 
@@ -1392,7 +1392,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
 
             {/* Storage Info Fallback */}
             <div className="bg-zinc-950/80 p-4 rounded border border-zinc-900 text-xs text-zinc-500">
-              💡 **Fallback Active**: If you log in via standard Credentials or don't set up OAuth Client IDs, Musi-Fi automatically stores your MP3 uploads inside a local server folder `local_storage`. This enables immediate zero-setup testing!
+              💡 **Fallback Active**: If you log in via standard Credentials or don't set up OAuth Client IDs, Musy-Fi automatically stores your MP3 uploads inside a local server folder `local_storage`. This enables immediate zero-setup testing!
             </div>
           </div>
 

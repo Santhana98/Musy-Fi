@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import * as mm from 'music-metadata';
-import { getGoogleDriveClient, getOrCreateMusiFiFolder } from './gdrive';
+import { getGoogleDriveClient, getOrCreateMusyFiFolder } from './gdrive';
 import { Readable } from 'stream';
 
 const LOCAL_STORAGE_DIR = process.env.VERCEL
@@ -70,7 +70,7 @@ export async function saveAudioFile(
   try {
     const drive = await getGoogleDriveClient(userId, accessToken);
     if (drive) {
-      const folderId = await getOrCreateMusiFiFolder(drive);
+      const folderId = await getOrCreateMusyFiFolder(drive);
       
       // Convert buffer to stream
       const bufferStream = new Readable();

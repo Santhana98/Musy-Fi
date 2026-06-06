@@ -1,6 +1,6 @@
 {
-  "name": "Musi-Fi Cloud Music Library",
-  "short_name": "Musi-Fi",
+  "name": "Musy-Fi Cloud Music Library",
+  "short_name": "Musy-Fi",
   "description": "Personal Cloud Music Player & Playlist Manager with YouTube Embeds",
   "start_url": "/",
   "display": "standalone",

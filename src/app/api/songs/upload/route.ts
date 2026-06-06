@@ -3,12 +3,12 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { saveAudioFile, parseAudioMetadata } from '@/lib/storage';
-import { getGoogleDriveClient, getOrCreateMusiFiFolder } from '@/lib/gdrive';
+import { getGoogleDriveClient, getOrCreateMusyFiFolder } from '@/lib/gdrive';
 import path from 'path';
 
 export const maxDuration = 60;
 
-// GET: Returns the user's Musi-Fi Google Drive folder ID
+// GET: Returns the user's Musy-Fi Google Drive folder ID
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -22,7 +22,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Google Drive not connected' }, { status: 400 });
     }
 
-    const folderId = await getOrCreateMusiFiFolder(drive);
+    const folderId = await getOrCreateMusyFiFolder(drive);
     return NextResponse.json({ folderId });
   } catch (error: any) {
     console.error('Error getting folder ID:', error);

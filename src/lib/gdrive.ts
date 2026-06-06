@@ -80,23 +80,36 @@ export async function getGoogleDriveClient(userId: string, accessToken?: string)
 }
 
 /**
- * Finds or creates the "Musi-Fi" folder in the user's Google Drive.
+ * Finds or creates the "Musy-Fi" folder in the user's Google Drive.
  */
-export async function getOrCreateMusiFiFolder(drive: any): Promise<string> {
+export async function getOrCreateMusyFiFolder(drive: any): Promise<string> {
+  // 1. Try to find the new "Musy-Fi" folder
   const response = await drive.files.list({
+    q: "mimeType='application/vnd.google-apps.folder' and name='Musy-Fi' and trashed=false",
+    fields: 'files(id, name)',
+    spaces: 'drive',
+  });
+
+  let files = response.data.files;
+  if (files && files.length > 0) {
+    return files[0].id;
+  }
+
+  // 2. Try to find the legacy "Musi-Fi" folder for backward compatibility
+  const legacyResponse = await drive.files.list({
     q: "mimeType='application/vnd.google-apps.folder' and name='Musi-Fi' and trashed=false",
     fields: 'files(id, name)',
     spaces: 'drive',
   });
 
-  const files = response.data.files;
-  if (files && files.length > 0) {
-    return files[0].id;
+  const legacyFiles = legacyResponse.data.files;
+  if (legacyFiles && legacyFiles.length > 0) {
+    return legacyFiles[0].id;
   }
 
-  // Folder does not exist, create it
+  // 3. Folder does not exist, create new "Musy-Fi" folder
   const fileMetadata = {
-    name: 'Musi-Fi',
+    name: 'Musy-Fi',
     mimeType: 'application/vnd.google-apps.folder',
   };
 

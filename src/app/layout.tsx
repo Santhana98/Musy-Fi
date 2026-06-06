@@ -14,12 +14,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Musi-Fi - Personal Cloud Music Library & Playlist Manager",
+  title: "Musy-Fi - Personal Cloud Music Library & Playlist Manager",
   description: "Organize and stream your personal music library directly from your own Google Drive storage and embed YouTube video tracks seamlessly, completely ad-free.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    title: "Musi-Fi",
+    title: "Musy-Fi",
     statusBarStyle: "black-translucent",
   },
 };

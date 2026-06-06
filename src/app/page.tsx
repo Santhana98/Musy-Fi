@@ -36,8 +36,8 @@ export default function DashboardPage() {
   if (status === 'loading' && !hasLoaded) {
     return (
       <div className="min-h-screen bg-bg-base flex flex-col items-center justify-center gap-4 text-zinc-500">
-        <img src="/logo.jpg" alt="Musi-Fi Logo" className="w-12 h-12 rounded-full object-cover animate-pulse" />
-        <span className="text-sm font-semibold tracking-wide animate-pulse">Loading Musi-Fi...</span>
+        <img src="/logo.jpg" alt="Musy-Fi Logo" className="w-12 h-12 rounded-full object-cover animate-pulse" />
+        <span className="text-sm font-semibold tracking-wide animate-pulse">Loading Musy-Fi...</span>
       </div>
     );
   }
