@@ -415,27 +415,9 @@ export default function MainView({ searchQuery }: MainViewProps) {
     e.preventDefault();
     if (!linkUrl.trim()) return;
 
-    let statusInterval: NodeJS.Timeout | undefined;
-
     try {
       setLinkLoading(true);
-      setLinkImportStatus('Initiating secure cloud link... 🚀');
-      
-      let step = 0;
-      const steps = [
-        'Fetching video metadata... 🔍',
-        'Establishing connection to YouTube... ⚡',
-        'Downloading high-quality audio stream... 📥',
-        'Encoding and locking track into your cloud... 🔐',
-        'Syncing library and final setup... 🎧'
-      ];
-      
-      statusInterval = setInterval(() => {
-        if (step < steps.length - 1) {
-          step++;
-          setLinkImportStatus(steps[step]);
-        }
-      }, 2500);
+      setLinkImportStatus('Adding to Library... 🚀');
 
       const res = await fetch('/api/songs/link', {
         method: 'POST',
@@ -461,7 +443,6 @@ export default function MainView({ searchQuery }: MainViewProps) {
       console.error(err);
       alert('An error occurred adding the URL link.');
     } finally {
-      if (statusInterval) clearInterval(statusInterval);
       setLinkLoading(false);
       setLinkImportStatus('');
     }

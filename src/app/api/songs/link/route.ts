@@ -82,12 +82,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Import YouTube links as real audio files first. This makes mobile background
-    // and lock-screen playback behave like uploaded songs when the import succeeds.
-    let finalType = type;
-    let finalSourceUrl = videoId;
-    let backgroundReady = false;
-
     if (type === 'youtube') {
       if (resolvedDuration > MAX_BACKGROUND_IMPORT_SECONDS) {
         return NextResponse.json(
@@ -95,67 +89,75 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
-
-      try {
-        console.log('Conversion Started');
-        const stream = await resolveYoutubeAudioStream(url);
-        const chunks: Buffer[] = [];
-        for await (const chunk of stream) {
-          chunks.push(Buffer.from(chunk));
-        }
-        const buffer = Buffer.concat(chunks);
-        
-        if (buffer.length === 0) {
-          throw new Error('Downloaded audio buffer is empty');
-        }
-        console.log('Conversion Completed');
-
-        console.log('Drive Upload Started');
-        // Determine a clean file name
-        const cleanTitle = resolvedTitle.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const uploadResult = await saveAudioFile(
-          userId,
-          `${cleanTitle}.m4a`,
-          buffer,
-          'audio/mp4',
-          accessToken
-        );
-
-        if (uploadResult.storageType !== 'google') {
-          throw new Error('Upload to Google Drive failed (fell back to local storage). Please ensure your Google Drive is connected and active.');
-        }
-
-        finalType = uploadResult.storageType;
-        finalSourceUrl = uploadResult.sourceUrl;
-        if (uploadResult.metadata && uploadResult.metadata.duration) {
-          resolvedDuration = uploadResult.metadata.duration;
-        }
-        backgroundReady = true;
-        console.log('Drive Upload Completed');
-      } catch (importErr: any) {
-        console.error('Import failed:', importErr.message || importErr);
-        return NextResponse.json(
-          { error: importErr.message || 'Failed to import and convert YouTube audio track to Google Drive' },
-          { status: 500 }
-        );
-      }
     }
 
-    // Save to DB
+    // Save to DB IMMEDIATELY as YouTube/Vimeo type to allow instant library playback
     const song = await prisma.song.create({
       data: {
         title: resolvedTitle,
         artist: resolvedArtist,
-        type: finalType,
-        sourceUrl: finalSourceUrl,
+        type: type, // "youtube" or "vimeo" initially
+        sourceUrl: videoId,
         thumbnail,
         duration: resolvedDuration,
         userId,
       },
     });
-    console.log('Library Entry Created');
+    console.log('Library Entry Created Instantly');
 
-    return NextResponse.json({ success: true, song, backgroundReady });
+    // If it's YouTube, kick off background import to convert it to a real audio file
+    if (type === 'youtube') {
+      const runBackgroundImport = async () => {
+        try {
+          console.log(`Background Conversion Started for song ${song.id}`);
+          const stream = await resolveYoutubeAudioStream(url);
+          const chunks: Buffer[] = [];
+          for await (const chunk of stream) {
+            chunks.push(Buffer.from(chunk));
+          }
+          const buffer = Buffer.concat(chunks);
+          
+          if (buffer.length === 0) {
+            throw new Error('Downloaded audio buffer is empty');
+          }
+          console.log(`Background Conversion Completed for song ${song.id}`);
+
+          console.log(`Background Drive Upload Started for song ${song.id}`);
+          // Determine a clean file name
+          const cleanTitle = resolvedTitle.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const uploadResult = await saveAudioFile(
+            userId,
+            `${cleanTitle}.m4a`,
+            buffer,
+            'audio/mp4',
+            accessToken
+          );
+
+          if (uploadResult.storageType === 'google') {
+            console.log(`Background Drive Upload Completed for song ${song.id}. Updating DB...`);
+            await prisma.song.update({
+              where: { id: song.id },
+              data: {
+                type: uploadResult.storageType,
+                sourceUrl: uploadResult.sourceUrl,
+                duration: uploadResult.metadata?.duration || resolvedDuration
+              }
+            });
+            console.log(`Background Import Fully Completed for song ${song.id}`);
+          } else {
+            throw new Error('Upload to Google Drive failed (fell back to local storage).');
+          }
+        } catch (importErr: any) {
+          console.error(`Background import failed for song ${song.id}:`, importErr.message || importErr);
+          // If it fails, it simply remains a 'youtube' type song, which plays perfectly fine!
+        }
+      };
+
+      // Fire and forget - DO NOT AWAIT
+      runBackgroundImport().catch(console.error);
+    }
+
+    return NextResponse.json({ success: true, song, backgroundReady: false });
   } catch (error: any) {
     console.error('Error in link route:', error);
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
