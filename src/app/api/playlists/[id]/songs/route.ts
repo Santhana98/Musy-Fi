@@ -180,6 +180,16 @@ export async function PUT(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // First, delete relations for songs that are no longer in the playlist
+    await prisma.playlistSong.deleteMany({
+      where: {
+        playlistId,
+        songId: {
+          notIn: songIds,
+        },
+      },
+    });
+
     // Update positions
     await prisma.$transaction(
       songIds.map((songId, index) =>

@@ -21,8 +21,23 @@ import {
   ChevronRight,
   ListMusic,
   FolderOpen,
-  Library
+  Library,
+  Pencil,
+  ArrowLeft,
+  MinusCircle,
+  GripVertical,
+  ChevronUp,
+  ChevronDown,
+  Check,
+  X,
+  Menu,
+  List,
+  Shuffle,
+  Download,
+  Share2,
+  MoreHorizontal
 } from 'lucide-react';
+
 
 interface MainViewProps {
   searchQuery: string;
@@ -51,7 +66,9 @@ export default function MainView({ searchQuery }: MainViewProps) {
     addToQueue,
     userTheme,
     loadingTheme,
-    setUserTheme
+    setUserTheme,
+    playbackMode,
+    setPlaybackMode
   } = usePlayer();
 
   const [allSongs, setAllSongs] = useState<Song[]>([]);
@@ -80,6 +97,15 @@ export default function MainView({ searchQuery }: MainViewProps) {
 
   // Dynamic playlists dropdown inside song rows
   const [activeDropdownRow, setActiveDropdownRow] = useState<string | null>(null);
+
+  // Playlist edit & add state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addSearchQuery, setAddSearchQuery] = useState('');
+  const [isEditingPlaylist, setIsEditingPlaylist] = useState(false);
+  const [editSongs, setEditSongs] = useState<Song[]>([]);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const touchStartIndexRef = useRef<number | null>(null);
 
   // Fetch all user songs
   const fetchAllSongs = async () => {
@@ -124,9 +150,9 @@ export default function MainView({ searchQuery }: MainViewProps) {
   };
 
   // Fetch playlist details
-  const fetchPlaylistDetail = async (id: string) => {
+  const fetchPlaylistDetail = async (id: string, silent: boolean = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await fetch(`/api/playlists/${id}`);
       if (res.ok) {
         const data = await res.json();
@@ -135,7 +161,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -452,7 +478,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
       if (res.ok) {
         setActiveDropdownRow(null);
         if (activeView === 'playlists' && activePlaylistId === playlistId) {
-          fetchPlaylistDetail(playlistId);
+          fetchPlaylistDetail(playlistId, true);
         } else {
           alert('Song added to playlist!');
         }
@@ -470,11 +496,127 @@ export default function MainView({ searchQuery }: MainViewProps) {
         method: 'DELETE',
       });
       if (res.ok) {
-        fetchPlaylistDetail(playlistId);
+        fetchPlaylistDetail(playlistId, true);
       }
     } catch (err) {
       console.error(err);
     }
+  };
+
+  // Save Reordered Playlist songs to Database
+  const handleSavePlaylistOrder = async () => {
+    if (!playlistDetail) return;
+    try {
+      setSavingOrder(true);
+      const res = await fetch(`/api/playlists/${playlistDetail.id}/songs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          songIds: editSongs.map((s) => s.id),
+        }),
+      });
+
+      if (res.ok) {
+        setIsEditingPlaylist(false);
+        fetchPlaylistDetail(playlistDetail.id, true);
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to save playlist order');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('An error occurred while saving the playlist order');
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  // Reorder local edit list via drag events
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index.toString());
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+
+    const updated = [...editSongs];
+    const item = updated[draggedIndex];
+    updated.splice(draggedIndex, 1);
+    updated.splice(index, 0, item);
+
+    setDraggedIndex(index);
+    setEditSongs(updated);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+  };
+
+  // Mobile reorder helpers
+  const handleMoveUp = (index: number) => {
+    if (index === 0) return;
+    const updated = [...editSongs];
+    const temp = updated[index];
+    updated[index] = updated[index - 1];
+    updated[index - 1] = temp;
+    setEditSongs(updated);
+  };
+
+  const handleMoveDown = (index: number) => {
+    if (index === editSongs.length - 1) return;
+    const updated = [...editSongs];
+    const temp = updated[index];
+    updated[index] = updated[index + 1];
+    updated[index + 1] = temp;
+    setEditSongs(updated);
+  };
+
+  const handleRemoveLocalSong = (index: number) => {
+    const updated = [...editSongs];
+    updated.splice(index, 1);
+    setEditSongs(updated);
+  };
+
+  // Touch event handlers for mobile reordering
+  const handleTouchStart = (e: React.TouchEvent, index: number) => {
+    touchStartIndexRef.current = index;
+    setDraggedIndex(index);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartIndexRef.current === null) return;
+
+    const touch = e.touches[0];
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (!element) return;
+
+    const songItem = element.closest('.edit-song-item');
+    if (!songItem) return;
+
+    const targetIndexAttr = songItem.getAttribute('data-index');
+    if (targetIndexAttr === null) return;
+
+    const targetIndex = parseInt(targetIndexAttr, 10);
+    const sourceIndex = touchStartIndexRef.current;
+
+    if (sourceIndex !== targetIndex && targetIndex >= 0 && targetIndex < editSongs.length) {
+      const updated = [...editSongs];
+      const item = updated[sourceIndex];
+      updated.splice(sourceIndex, 1);
+      updated.splice(targetIndex, 0, item);
+
+      touchStartIndexRef.current = targetIndex;
+      setDraggedIndex(targetIndex);
+      setEditSongs(updated);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchStartIndexRef.current = null;
+    setDraggedIndex(null);
   };
 
   // Format Duration helper (seconds -> mm:ss)
@@ -1005,185 +1147,392 @@ export default function MainView({ searchQuery }: MainViewProps) {
             <div className="h-64 flex items-center justify-center text-zinc-500 animate-pulse">Loading playlist details...</div>
           ) : playlistDetail ? (
             <>
-              {/* Playlist Header Panel */}
-              <div className="flex items-end gap-6 bg-gradient-to-t from-zinc-900 to-zinc-800/40 -mx-8 -mt-6 p-8 pt-12 border-b border-zinc-900 relative">
-                <div className="w-36 h-36 bg-zinc-850 rounded shadow-2xl flex items-center justify-center border border-zinc-700/30 overflow-hidden">
-                  {playlistDetail.coverImage ? (
-                    <img src={playlistDetail.coverImage} alt={playlistDetail.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <ListMusic className="w-16 h-16 text-zinc-500" />
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <span className="text-xs font-extrabold uppercase tracking-widest text-zinc-300">Playlist</span>
-                  <h1 className="text-4xl font-extrabold text-white">{playlistDetail.name}</h1>
-                  {playlistDetail.description && (
-                    <p className="text-sm text-zinc-400">{playlistDetail.description}</p>
-                  )}
-                  <p className="text-xs text-zinc-400">
-                    {session?.user?.name || session?.user?.email} • {playlistDetail.songs.length} {playlistDetail.songs.length === 1 ? 'song' : 'songs'}
-                  </p>
-                </div>
-
-                {/* Delete playlist option */}
-                <button
-                  onClick={async () => {
-                    if (confirm('Delete this playlist?')) {
-                      const res = await fetch(`/api/playlists/${playlistDetail.id}`, { method: 'DELETE' });
-                      if (res.ok) setActiveView('home');
-                    }
-                  }}
-                  className="absolute right-8 top-8 text-zinc-400 hover:text-red-500 p-2 hover:bg-zinc-800/40 rounded-full transition-all"
-                  title="Delete playlist"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Action play row */}
-              {playlistDetail.songs.length > 0 && (
-                <div className="flex items-center gap-4 py-4">
-                  <button
-                    onClick={() => playTrack(playlistDetail.songs[0], playlistDetail.songs)}
-                    className="bg-spotify-green hover:bg-spotify-green-hover p-4 rounded-full text-black hover:scale-105 transition-transform"
-                  >
-                    {isPlaying && playlistDetail.songs.some(s => s.id === currentTrack?.id) ? (
-                      <Pause className="w-6 h-6 fill-black" />
-                    ) : (
-                      <Play className="w-6 h-6 fill-black ml-0.5" />
-                    )}
-                  </button>
-                </div>
-              )}
-
-              {/* Track list */}
-              {playlistDetail.songs.length === 0 ? (
-                <div className="p-8 text-center text-zinc-500 flex flex-col items-center gap-3 border border-dashed border-zinc-800 rounded-lg">
-                  <FolderOpen className="w-12 h-12 text-zinc-700" />
-                  <div>
-                    <h3 className="text-white font-semibold mb-1">Playlist is empty</h3>
-                    <p className="text-xs text-zinc-400">Add tracks from your cloud library below.</p>
+              {isEditingPlaylist ? (
+                <div className="space-y-6 animate-fade-in max-w-2xl mx-auto pt-4 select-none">
+                  {/* Header Row */}
+                  <div className="flex items-center justify-between border-b border-zinc-900 pb-4">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingPlaylist(false)}
+                      className="p-2 bg-zinc-900/80 hover:bg-zinc-800 rounded-full border border-zinc-800/40 text-zinc-400 hover:text-white transition-all active:scale-95 cursor-pointer"
+                      title="Cancel and Go Back"
+                    >
+                      <ArrowLeft className="w-5 h-5" />
+                    </button>
+                    <h2 className="text-base md:text-lg font-bold text-white uppercase tracking-wider">Edit playlist</h2>
+                    <button
+                      type="button"
+                      onClick={handleSavePlaylistOrder}
+                      disabled={savingOrder}
+                      className="text-sm font-bold text-spotify-green hover:text-spotify-green-hover disabled:text-zinc-600 transition-colors cursor-pointer"
+                    >
+                      {savingOrder ? 'Saving...' : 'Save'}
+                    </button>
                   </div>
+
+                  {/* Songs list */}
+                  {editSongs.length === 0 ? (
+                    <div className="p-12 text-center text-zinc-550 border border-dashed border-zinc-900 rounded-xl bg-zinc-950/20">
+                      No songs in this playlist.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-zinc-900/40 pt-2 bg-zinc-950/40 rounded-xl p-2 border border-zinc-900/60">
+                      {editSongs.map((song, index) => {
+                        const isDragged = draggedIndex === index;
+                        return (
+                          <div
+                            key={song.id}
+                            draggable={true}
+                            onDragStart={(e) => handleDragStart(e, index)}
+                            onDragOver={(e) => handleDragOver(e, index)}
+                            onDragEnd={handleDragEnd}
+                            className={`edit-song-item flex items-center justify-between p-3 transition-all select-none ${
+                              isDragged 
+                                ? 'bg-zinc-900 border-y border-spotify-green/40 scale-[1.01] shadow-2xl' 
+                                : 'hover:bg-zinc-900/30'
+                            }`}
+                            data-index={index}
+                          >
+                            {/* Left Side: Delete/Remove Circle & Song Info */}
+                            <div className="flex items-center gap-3.5 truncate flex-1 pr-4">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveLocalSong(index)}
+                                className="text-zinc-500 hover:text-red-500 active:scale-90 transition-all flex-shrink-0 cursor-pointer p-0.5"
+                                title="Remove from playlist"
+                              >
+                                <MinusCircle className="w-5 h-5" />
+                              </button>
+                              
+                              <img
+                                src={song.thumbnail || PLAYLIST_FALLBACK_IMAGE}
+                                alt={song.title}
+                                className="w-10 h-10 rounded object-cover border border-zinc-900 flex-shrink-0 shadow-md"
+                                onError={(e) => {
+                                  e.currentTarget.src = PLAYLIST_FALLBACK_IMAGE;
+                                }}
+                              />
+                              
+                              <div className="truncate">
+                                <p className="text-sm font-semibold text-white truncate">{song.title}</p>
+                                <p className="text-xs text-zinc-400 truncate mt-0.5">{song.artist}</p>
+                              </div>
+                            </div>
+
+                            {/* Right Side: Reordering Buttons & Drag Handle */}
+                            <div className="flex items-center gap-2 text-zinc-500 flex-shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleMoveUp(index)}
+                                disabled={index === 0}
+                                className="p-1 hover:text-white disabled:opacity-20 disabled:hover:text-zinc-500 transition-colors cursor-pointer md:block hidden"
+                                title="Move Up"
+                              >
+                                <ChevronUp className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleMoveDown(index)}
+                                disabled={index === editSongs.length - 1}
+                                className="p-1 hover:text-white disabled:opacity-20 disabled:hover:text-zinc-500 transition-colors cursor-pointer md:block hidden"
+                                title="Move Down"
+                              >
+                                <ChevronDown className="w-4 h-4" />
+                              </button>
+                              <div 
+                                className="p-2 text-zinc-500 hover:text-white cursor-grab active:cursor-grabbing flex-shrink-0"
+                                style={{ touchAction: 'none' }}
+                                onTouchStart={(e) => handleTouchStart(e, index)}
+                                onTouchMove={handleTouchMove}
+                                onTouchEnd={handleTouchEnd}
+                                title="Drag to reorder"
+                              >
+                                <Menu className="w-5 h-5" />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="space-y-1">
-                  <div className="grid grid-cols-[24px_1fr_auto] md:grid-cols-[16px_1fr_120px_48px] gap-2 md:gap-4 px-2 md:px-4 py-2 text-zinc-400 text-xs font-semibold uppercase border-b border-zinc-900">
-                    <div>#</div>
-                    <div>Title</div>
-                    <div className="hidden md:block">Source</div>
-                    <div className="flex justify-end"><Clock className="w-4 h-4" /></div>
+                <>
+                  {/* Playlist Header Panel */}
+                  <div className="flex items-end gap-6 bg-gradient-to-t from-zinc-900 to-zinc-800/40 -mx-8 -mt-6 p-8 pt-12 border-b border-zinc-900 relative">
+                    <div className="w-36 h-36 bg-zinc-850 rounded shadow-2xl flex items-center justify-center border border-zinc-700/30 overflow-hidden">
+                      {playlistDetail.coverImage ? (
+                        <img src={playlistDetail.coverImage} alt={playlistDetail.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <ListMusic className="w-16 h-16 text-zinc-500" />
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <span className="text-xs font-extrabold uppercase tracking-widest text-zinc-300">Playlist</span>
+                      <h1 className="text-4xl font-extrabold text-white">{playlistDetail.name}</h1>
+                      {playlistDetail.description && (
+                        <p className="text-sm text-zinc-400">{playlistDetail.description}</p>
+                      )}
+                      <p className="text-xs text-zinc-400">
+                        {session?.user?.name || session?.user?.email} • {playlistDetail.songs.length} {playlistDetail.songs.length === 1 ? 'song' : 'songs'}
+                      </p>
+                    </div>
+
+                    {/* Delete playlist option */}
+                    <button
+                      onClick={async () => {
+                        if (confirm('Delete this playlist?')) {
+                          const res = await fetch(`/api/playlists/${playlistDetail.id}`, { method: 'DELETE' });
+                          if (res.ok) setActiveView('home');
+                        }
+                      }}
+                      className="absolute right-8 top-8 text-zinc-400 hover:text-red-500 p-2 hover:bg-zinc-800/40 rounded-full transition-all"
+                      title="Delete playlist"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
                   </div>
 
-                  {playlistDetail.songs.map((song, idx) => {
-                    const isCurrent = currentTrack?.id === song.id;
-                    return (
-                      <div
-                        key={song.id}
-                        onClick={() => playTrack(song, playlistDetail.songs)}
-                        className={`grid grid-cols-[24px_1fr_auto] md:grid-cols-[16px_1fr_120px_48px] gap-2 md:gap-4 px-2 md:px-4 py-2.5 rounded-md items-center group cursor-pointer transition-colors ${
-                          isCurrent ? 'bg-zinc-800/40' : 'hover:bg-zinc-900/50'
-                        }`}
+                  {/* Row 1: Action Play, Shuffle & Meta Rows */}
+                  <div className="flex items-center justify-between py-4 border-b border-zinc-900/30">
+                    {/* Left Actions (Download, Share, More) */}
+                    <div className="flex items-center gap-2.5 text-zinc-400">
+                      <button 
+                        type="button"
+                        className="p-2 hover:text-white hover:bg-zinc-800/40 rounded-full transition-all active:scale-95 cursor-pointer"
+                        title="Download Playlist"
                       >
-                        <div className="text-sm text-zinc-500">
-                          {isCurrent && isPlaying ? (
-                            <div className="flex gap-0.5 items-end h-3.5 w-3.5 pb-0.5">
-                              <span className="equalizer-bar w-0.5 bg-spotify-green h-1"></span>
-                              <span className="equalizer-bar w-0.5 bg-spotify-green h-2"></span>
-                              <span className="equalizer-bar w-0.5 bg-spotify-green h-1.5"></span>
-                            </div>
-                          ) : (
-                            <span className="group-hover:hidden">{idx + 1}</span>
-                          )}
-                          <Play className="w-3.5 h-3.5 text-white fill-white hidden group-hover:block" />
-                        </div>
+                        <Download className="w-5 h-5" />
+                      </button>
+                      <button 
+                        type="button"
+                        className="p-2 hover:text-white hover:bg-zinc-800/40 rounded-full transition-all active:scale-95 cursor-pointer"
+                        title="Share Playlist"
+                      >
+                        <Share2 className="w-5 h-5" />
+                      </button>
+                      <button 
+                        type="button"
+                        className="p-2 hover:text-white hover:bg-zinc-800/40 rounded-full transition-all active:scale-95 cursor-pointer"
+                        title="More Options"
+                      >
+                        <MoreHorizontal className="w-5 h-5" />
+                      </button>
+                    </div>
 
-                        <div className="flex items-center gap-3 truncate">
-                          <div className="w-10 h-10 bg-zinc-800 rounded flex-shrink-0 flex items-center justify-center overflow-hidden">
-                            <img
-                              src={song.thumbnail || PLAYLIST_FALLBACK_IMAGE}
-                              alt={song.title}
-                              className="w-full h-full object-cover"
-                              onError={(event) => {
-                                event.currentTarget.src = PLAYLIST_FALLBACK_IMAGE;
-                              }}
-                            />
-                          </div>
-                          <div className="truncate">
-                            <p className={`text-sm font-semibold truncate ${isCurrent ? 'text-spotify-green' : 'text-white'}`}>
-                              {song.title}
-                            </p>
-                            <p className="text-xs text-zinc-400 truncate">{song.artist}</p>
-                          </div>
-                        </div>
+                    {/* Right Actions (Shuffle, Play) */}
+                    <div className="flex items-center gap-4">
+                      {/* Shuffle Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPlaybackMode(playbackMode === 'shuffle' ? 'normal' : 'shuffle');
+                        }}
+                        className={`p-2 transition-all active:scale-95 cursor-pointer ${
+                          playbackMode === 'shuffle' 
+                            ? 'text-spotify-green hover:text-spotify-green-hover' 
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                        title="Shuffle Playlist"
+                      >
+                        <Shuffle className="w-5.5 h-5.5" />
+                      </button>
 
-                        <div className="hidden md:flex text-xs text-zinc-400 capitalize">
-                          {song.type === 'youtube' ? 'YouTube' : song.type === 'google' ? 'Google Drive' : 'Local File'}
-                        </div>
-
-                        <div className="text-xs text-zinc-400 font-medium flex items-center justify-end gap-2 md:gap-3">
-                          <button
-                            onClick={(e) => handleLikeToggle(song.id, e)}
-                            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-zinc-400 hover:text-white p-1"
-                          >
-                            <Heart className={`w-4 h-4 ${song.isLiked ? 'text-spotify-green fill-spotify-green' : ''}`} />
-                          </button>
-                          <button
-                            onClick={(e) => handleRemoveSongFromPlaylist(playlistDetail.id, song.id, e)}
-                            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-zinc-400 hover:text-red-500 p-1"
-                            title="Remove from playlist"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                          <span className="w-8 text-right">{formatDuration(song.duration)}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Add Songs Section */}
-              <div className="pt-10 border-t border-zinc-900 mt-10">
-                <h3 className="text-lg font-bold text-white mb-2">Recommended Tracks</h3>
-                <p className="text-xs text-zinc-400 mb-6">Select tracks from your library to add to this playlist.</p>
-
-                {allSongs.filter(s => !playlistDetail.songs.some(ps => ps.id === s.id)).length === 0 ? (
-                  <p className="text-xs text-zinc-500 italic">No remaining songs in library to add. Go to "Upload" to add more!</p>
-                ) : (
-                  <div className="space-y-1">
-                    {allSongs
-                      .filter(s => !playlistDetail.songs.some(ps => ps.id === s.id))
-                      .slice(0, 5)
-                      .map((song) => (
-                        <div
-                          key={song.id}
-                          className="flex items-center justify-between p-3 bg-zinc-900/40 rounded hover:bg-zinc-900/80 transition-colors"
+                      {/* Play Button */}
+                      {playlistDetail.songs.length > 0 && (
+                        <button
+                          onClick={() => playTrack(playlistDetail.songs[0], playlistDetail.songs)}
+                          className="bg-spotify-green hover:bg-spotify-green-hover p-4 rounded-full text-black hover:scale-105 active:scale-95 transition-all shadow-lg"
                         >
-                          <div className="flex items-center gap-3 truncate">
-                            <div className="w-10 h-10 bg-zinc-800 rounded flex items-center justify-center overflow-hidden">
-                              {song.thumbnail ? (
-                                <img src={song.thumbnail} alt={song.title} className="w-full h-full object-cover" />
+                          {isPlaying && playlistDetail.songs.some(s => s.id === currentTrack?.id) ? (
+                            <Pause className="w-6 h-6 fill-black" />
+                          ) : (
+                            <Play className="w-6 h-6 fill-black ml-0.5" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Row 2: Pill capsule action buttons */}
+                  <div className="flex flex-wrap items-center gap-2.5 py-3 border-b border-zinc-900/40 mb-2">
+                    {/* Add Songs Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddSearchQuery('');
+                        setShowAddModal(true);
+                      }}
+                      className="flex items-center gap-1.5 bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/40 text-white text-xs font-semibold px-4 py-2 rounded-full transition-all cursor-pointer active:scale-95"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add</span>
+                    </button>
+
+                    {/* Edit Playlist Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditSongs(playlistDetail.songs);
+                        setIsEditingPlaylist(true);
+                      }}
+                      className="flex items-center gap-1.5 bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/40 text-white text-xs font-semibold px-4 py-2 rounded-full transition-all cursor-pointer active:scale-95"
+                    >
+                      <List className="w-3.5 h-3.5" />
+                      <span>Edit</span>
+                    </button>
+
+                    {/* Sort Button */}
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/40 text-zinc-350 hover:text-white text-xs font-semibold px-4 py-2 rounded-full transition-all cursor-pointer active:scale-95"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h18M3 12h18M3 17h10" />
+                      </svg>
+                      <span>Sort</span>
+                    </button>
+
+                    {/* Name & Details Button */}
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/40 text-zinc-350 hover:text-white text-xs font-semibold px-4 py-2 rounded-full transition-all cursor-pointer active:scale-95"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      <span>Name & details</span>
+                    </button>
+                  </div>
+
+                  {/* Track list */}
+                  {playlistDetail.songs.length === 0 ? (
+                    <div className="p-8 text-center text-zinc-500 flex flex-col items-center gap-3 border border-dashed border-zinc-800 rounded-lg">
+                      <FolderOpen className="w-12 h-12 text-zinc-700" />
+                      <div>
+                        <h3 className="text-white font-semibold mb-1">Playlist is empty</h3>
+                        <p className="text-xs text-zinc-400">Add tracks from your cloud library below.</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <div className="grid grid-cols-[24px_1fr_auto] md:grid-cols-[16px_1fr_120px_48px] gap-2 md:gap-4 px-2 md:px-4 py-2 text-zinc-400 text-xs font-semibold uppercase border-b border-zinc-900">
+                        <div>#</div>
+                        <div>Title</div>
+                        <div className="hidden md:block">Source</div>
+                        <div className="flex justify-end"><Clock className="w-4 h-4" /></div>
+                      </div>
+
+                      {playlistDetail.songs.map((song, idx) => {
+                        const isCurrent = currentTrack?.id === song.id;
+                        return (
+                          <div
+                            key={song.id}
+                            onClick={() => playTrack(song, playlistDetail.songs)}
+                            className={`grid grid-cols-[24px_1fr_auto] md:grid-cols-[16px_1fr_120px_48px] gap-2 md:gap-4 px-2 md:px-4 py-2.5 rounded-md items-center group cursor-pointer transition-colors ${
+                              isCurrent ? 'bg-zinc-800/40' : 'hover:bg-zinc-900/50'
+                            }`}
+                          >
+                            <div className="text-sm text-zinc-500">
+                              {isCurrent && isPlaying ? (
+                                <div className="flex gap-0.5 items-end h-3.5 w-3.5 pb-0.5">
+                                  <span className="equalizer-bar w-0.5 bg-spotify-green h-1"></span>
+                                  <span className="equalizer-bar w-0.5 bg-spotify-green h-2"></span>
+                                  <span className="equalizer-bar w-0.5 bg-spotify-green h-1.5"></span>
+                                </div>
                               ) : (
-                                <Music className="w-4 h-4 text-zinc-400" />
+                                <span className="group-hover:hidden">{idx + 1}</span>
                               )}
+                              <Play className="w-3.5 h-3.5 text-white fill-white hidden group-hover:block" />
                             </div>
-                            <div className="truncate">
-                              <p className="text-sm font-semibold text-white truncate">{song.title}</p>
-                              <p className="text-xs text-zinc-400 truncate">{song.artist}</p>
+
+                            <div className="flex items-center gap-3 truncate">
+                              <div className="w-10 h-10 bg-zinc-800 rounded flex-shrink-0 flex items-center justify-center overflow-hidden">
+                                <img
+                                  src={song.thumbnail || PLAYLIST_FALLBACK_IMAGE}
+                                  alt={song.title}
+                                  className="w-full h-full object-cover"
+                                  onError={(event) => {
+                                    event.currentTarget.src = PLAYLIST_FALLBACK_IMAGE;
+                                  }}
+                                />
+                              </div>
+                              <div className="truncate">
+                                <p className={`text-sm font-semibold truncate ${isCurrent ? 'text-spotify-green' : 'text-white'}`}>
+                                  {song.title}
+                                </p>
+                                <p className="text-xs text-zinc-400 truncate">{song.artist}</p>
+                              </div>
+                            </div>
+
+                            <div className="hidden md:flex text-xs text-zinc-400 capitalize">
+                              {song.type === 'youtube' ? 'YouTube' : song.type === 'google' ? 'Google Drive' : 'Local File'}
+                            </div>
+
+                            <div className="text-xs text-zinc-400 font-medium flex items-center justify-end gap-2 md:gap-3">
+                              <button
+                                onClick={(e) => handleLikeToggle(song.id, e)}
+                                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-zinc-400 hover:text-white p-1"
+                              >
+                                <Heart className={`w-4 h-4 ${song.isLiked ? 'text-spotify-green fill-spotify-green' : ''}`} />
+                              </button>
+                              <button
+                                onClick={(e) => handleRemoveSongFromPlaylist(playlistDetail.id, song.id, e)}
+                                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-zinc-400 hover:text-red-500 p-1"
+                                title="Remove from playlist"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                              <span className="w-8 text-right">{formatDuration(song.duration)}</span>
                             </div>
                           </div>
-                          <button
-                            onClick={() => handleAddSongToPlaylist(playlistDetail.id, song.id)}
-                            className="flex items-center gap-1.5 border border-zinc-700 hover:border-white text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-all"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            Add
-                          </button>
-                        </div>
-                      ))}
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Add Songs Section */}
+                  <div className="pt-10 border-t border-zinc-900 mt-10">
+                    <h3 className="text-lg font-bold text-white mb-2">Recommended Tracks</h3>
+                    <p className="text-xs text-zinc-400 mb-6">Select tracks from your library to add to this playlist.</p>
+
+                    {allSongs.filter(s => !playlistDetail.songs.some(ps => ps.id === s.id)).length === 0 ? (
+                      <p className="text-xs text-zinc-500 italic">No remaining songs in library to add. Go to "Upload" to add more!</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {allSongs
+                          .filter(s => !playlistDetail.songs.some(ps => ps.id === s.id))
+                          .slice(0, 5)
+                          .map((song) => (
+                            <div
+                              key={song.id}
+                              className="flex items-center justify-between p-3 bg-zinc-900/40 rounded hover:bg-zinc-900/80 transition-colors"
+                            >
+                              <div className="flex items-center gap-3 truncate">
+                                <div className="w-10 h-10 bg-zinc-800 rounded flex items-center justify-center overflow-hidden">
+                                  {song.thumbnail ? (
+                                    <img src={song.thumbnail} alt={song.title} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <Music className="w-4 h-4 text-zinc-400" />
+                                  )}
+                                </div>
+                                <div className="truncate">
+                                  <p className="text-sm font-semibold text-white truncate">{song.title}</p>
+                                  <p className="text-xs text-zinc-400 truncate">{song.artist}</p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleAddSongToPlaylist(playlistDetail.id, song.id)}
+                                className="flex items-center gap-1.5 border border-zinc-700 hover:border-white text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-all"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                Add
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </>
+              )}
             </>
           ) : (
             <div className="h-64 flex flex-col items-center justify-center text-zinc-500">
@@ -1472,6 +1821,139 @@ export default function MainView({ searchQuery }: MainViewProps) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Songs Modal (Overlay) */}
+      {showAddModal && playlistDetail && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-fade-in backdrop-blur-sm">
+          <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-xl w-full max-w-lg shadow-2xl flex flex-col max-h-[85vh]">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-zinc-900">
+              <div>
+                <h3 className="text-lg font-bold text-white">Add Songs</h3>
+                <p className="text-xs text-zinc-400">to {playlistDetail.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddModal(false);
+                  setAddSearchQuery('');
+                }}
+                className="text-zinc-400 hover:text-white p-1 hover:bg-zinc-900 rounded-full transition-all active:scale-95"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="my-4 relative">
+              <input
+                type="text"
+                placeholder="Search for songs or artists..."
+                value={addSearchQuery}
+                onChange={(e) => setAddSearchQuery(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-800 text-white rounded-lg pl-3 pr-10 py-2.5 text-sm focus:outline-none focus:border-spotify-green transition-all"
+              />
+              {addSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setAddSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Songs List */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar min-h-[300px]">
+              {allSongs.filter(song => {
+                if (!addSearchQuery) return true;
+                const q = addSearchQuery.toLowerCase();
+                return (
+                  song.title.toLowerCase().includes(q) ||
+                  song.artist.toLowerCase().includes(q)
+                );
+              }).length === 0 ? (
+                <div className="py-12 text-center text-zinc-500 text-sm">
+                  No matching songs found in library.
+                </div>
+              ) : (
+                allSongs
+                  .filter(song => {
+                    if (!addSearchQuery) return true;
+                    const q = addSearchQuery.toLowerCase();
+                    return (
+                      song.title.toLowerCase().includes(q) ||
+                      song.artist.toLowerCase().includes(q)
+                    );
+                  })
+                  .map((song) => {
+                    const isAdded = playlistDetail.songs.some((ps) => ps.id === song.id);
+                    return (
+                      <div
+                        key={song.id}
+                        className="flex items-center justify-between p-2.5 bg-zinc-900/40 rounded-lg hover:bg-zinc-900/80 border border-zinc-900/20 hover:border-zinc-800/40 transition-all group"
+                      >
+                        {/* Song Info */}
+                        <div className="flex items-center gap-3 truncate flex-1 pr-4">
+                          <div className="w-10 h-10 bg-zinc-800 rounded flex items-center justify-center overflow-hidden border border-zinc-800 flex-shrink-0">
+                            {song.thumbnail ? (
+                              <img src={song.thumbnail} alt={song.title} className="w-full h-full object-cover" />
+                            ) : (
+                              <Music className="w-4 h-4 text-zinc-400" />
+                            )}
+                          </div>
+                          <div className="truncate">
+                            <p className="text-sm font-semibold text-white truncate">{song.title}</p>
+                            <p className="text-xs text-zinc-400 truncate">{song.artist}</p>
+                          </div>
+                        </div>
+
+                        {/* Add/Remove Action Button */}
+                        {isAdded ? (
+                          <button
+                            type="button"
+                            onClick={(e) => handleRemoveSongFromPlaylist(playlistDetail.id, song.id, e)}
+                            className="flex items-center gap-1.5 border border-spotify-green/30 bg-spotify-green/10 text-spotify-green hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/30 text-xs font-bold px-3.5 py-1.5 rounded-full transition-all group-hover:scale-105 active:scale-95 cursor-pointer"
+                            title="Remove from playlist"
+                          >
+                            <Check className="w-3.5 h-3.5 block group-hover:hidden" />
+                            <span className="block group-hover:hidden">Added</span>
+                            <MinusCircle className="w-3.5 h-3.5 hidden group-hover:block" />
+                            <span className="hidden group-hover:block">Remove</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleAddSongToPlaylist(playlistDetail.id, song.id)}
+                            className="flex items-center gap-1.5 border border-zinc-700 hover:border-white text-white hover:bg-white hover:text-black text-xs font-bold px-3.5 py-1.5 rounded-full transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+
+            {/* Done Button */}
+            <div className="pt-4 border-t border-zinc-900 mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddModal(false);
+                  setAddSearchQuery('');
+                }}
+                className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-sm px-6 py-2.5 rounded-full transition-all active:scale-95 cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}
