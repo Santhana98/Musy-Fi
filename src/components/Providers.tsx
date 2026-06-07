@@ -3,6 +3,7 @@
 import React, { useEffect } from 'react';
 import { SessionProvider } from 'next-auth/react';
 import { PlayerProvider } from '@/context/PlayerContext';
+import UpdatePrompt from '@/components/UpdatePrompt';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -34,6 +35,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <SessionProvider>
       <PlayerProvider>
         {children}
+        <UpdatePrompt />
       </PlayerProvider>
     </SessionProvider>
   );
