@@ -22,6 +22,8 @@ import {
   Disc
 } from 'lucide-react';
 
+import VinylPlayer from './VinylPlayer';
+
 // Dynamically import ReactPlayer with SSR disabled since it uses window/navigator APIs
 const ReactPlayer = dynamic(() => import('react-player'), { ssr: false }) as any;
 
@@ -599,23 +601,9 @@ export default function MusicPlayer() {
             <div className="w-11"></div> {/* Alignment spacer */}
           </div>
 
-          {/* Large Rotating Cover Disc */}
-          <div className="flex-1 flex flex-col items-center justify-center my-8">
-            <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-full overflow-hidden shadow-[0_0_50px_rgba(214,40,40,0.15)] border border-zinc-850 flex items-center justify-center bg-zinc-900">
-              <img 
-                src={currentTrack.thumbnail || '/assets/images/18.jpg'} 
-                alt={currentTrack.title} 
-                className={`w-full h-full object-cover transition-transform duration-[20000ms] ease-linear ${isPlaying ? 'animate-spin' : ''}`}
-                style={{ borderRadius: '50%' }}
-                onError={(e) => {
-                  e.currentTarget.src = '/assets/images/18.jpg';
-                }}
-              />
-              {/* Inner Hole for Vinyl Disk look */}
-              <div className="absolute w-14 h-14 bg-zinc-950 border-4 border-zinc-900 rounded-full shadow-inner z-10 flex items-center justify-center">
-                <div className="w-3.5 h-3.5 bg-zinc-800 rounded-full"></div>
-              </div>
-            </div>
+          {/* Large Rotating Cover Disc replaced with VinylPlayer */}
+          <div className="flex-1 flex flex-col items-center justify-center my-8 w-full overflow-hidden">
+            <VinylPlayer currentTrack={currentTrack} isPlaying={isPlaying} />
           </div>
 
           {/* Track Details */}

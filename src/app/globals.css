@@ -117,3 +117,23 @@ body {
 .animate-slide-up {
   animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+@keyframes floatUp {
+  0% { transform: translateY(0) scale(0.8) rotate(0deg); opacity: 0; }
+  10% { opacity: 1; }
+  50% { transform: translateY(-100px) scale(1.2) rotate(15deg); opacity: 0.8; }
+  100% { transform: translateY(-200px) scale(1) rotate(-10deg); opacity: 0; }
+}
+
+.animate-float-up {
+  animation: floatUp 4s ease-out forwards;
+}
+
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 4s linear infinite;
+}
