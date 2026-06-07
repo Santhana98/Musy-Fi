@@ -107,6 +107,25 @@ export default function MainView({ searchQuery }: MainViewProps) {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const touchStartIndexRef = useRef<number | null>(null);
 
+  // Infinite Scroll State
+  const [visibleSongsCount, setVisibleSongsCount] = useState(30);
+  const observerTarget = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting) {
+          setVisibleSongsCount(prev => prev + 30);
+        }
+      },
+      { threshold: 1.0 }
+    );
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+    return () => observer.disconnect();
+  }, [allSongs]);
+
   // Fetch all user songs
   const fetchAllSongs = async () => {
     if (!session) return;
@@ -746,7 +765,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
                 </div>
 
                 {/* Song list */}
-                {allSongs.slice(0, 10).map((song, idx) => {
+                {allSongs.slice(0, visibleSongsCount).map((song, idx) => {
                   const isCurrent = currentTrack?.id === song.id;
                   return (
                     <div
@@ -829,6 +848,10 @@ export default function MainView({ searchQuery }: MainViewProps) {
                     </div>
                   );
                 })}
+                {/* Invisible element to trigger intersection observer for infinite scroll */}
+                {visibleSongsCount < allSongs.length && (
+                  <div ref={observerTarget} className="h-4" />
+                )}
               </div>
             )}
 

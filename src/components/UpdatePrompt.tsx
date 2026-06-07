@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 export default function UpdatePrompt() {
   const [showPrompt, setShowPrompt] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -14,12 +15,26 @@ export default function UpdatePrompt() {
       navigator.serviceWorker.getRegistration().then((reg) => {
         if (!reg) return;
 
+        const checkAndShowPrompt = async (worker: ServiceWorker) => {
+          setWaitingWorker(worker);
+          try {
+            const res = await fetch(`/version.json?t=${Date.now()}`);
+            if (res.ok) {
+              const data = await res.json();
+              setLatestVersion(data.version);
+              const snoozedUntil = parseInt(localStorage.getItem('musifi_update_snooze_until') || '0', 10);
+              const snoozedVersion = localStorage.getItem('musifi_snoozed_version');
+              if (Date.now() < snoozedUntil && snoozedVersion === data.version) return;
+            }
+          } catch (e) {}
+          setShowPrompt(true);
+        };
+
         // Active check on mount
         reg.update();
 
         if (reg.waiting) {
-          setWaitingWorker(reg.waiting);
-          setShowPrompt(true);
+          checkAndShowPrompt(reg.waiting);
         }
 
         reg.addEventListener('updatefound', () => {
@@ -27,8 +42,7 @@ export default function UpdatePrompt() {
             reg.installing.addEventListener('statechange', () => {
               if (reg.installing?.state === 'installed') {
                 if (navigator.serviceWorker.controller) {
-                  setWaitingWorker(reg.installing);
-                  setShowPrompt(true);
+                  checkAndShowPrompt(reg.installing);
                 }
               }
             });
@@ -53,21 +67,27 @@ export default function UpdatePrompt() {
         if (!res.ok) return;
         
         const data = await res.json();
+        setLatestVersion(data.version);
         const currentVersion = localStorage.getItem('musifi_app_version');
+        const snoozedUntil = parseInt(localStorage.getItem('musifi_update_snooze_until') || '0', 10);
+        const snoozedVersion = localStorage.getItem('musifi_snoozed_version');
 
         if (currentVersion && currentVersion !== data.version) {
-          // If a new version exists on the server, but the SW hasn't triggered `updatefound` yet,
-          // we force an SW update check.
-          if ('serviceWorker' in navigator) {
-            const reg = await navigator.serviceWorker.getRegistration();
-            if (reg) {
-              await reg.update(); // This should trigger the `updatefound` flow above
+          const isSnoozed = Date.now() < snoozedUntil && snoozedVersion === data.version;
+          if (!isSnoozed) {
+            // If a new version exists on the server, but the SW hasn't triggered `updatefound` yet,
+            // we force an SW update check.
+            if ('serviceWorker' in navigator) {
+              const reg = await navigator.serviceWorker.getRegistration();
+              if (reg) {
+                await reg.update(); // This should trigger the `updatefound` flow above
+              } else {
+                // If no SW but version changed, just show prompt to reload
+                setShowPrompt(true);
+              }
             } else {
-              // If no SW but version changed, just show prompt to reload
               setShowPrompt(true);
             }
-          } else {
-            setShowPrompt(true);
           }
         }
         
@@ -105,6 +125,14 @@ export default function UpdatePrompt() {
     }
   };
 
+  const handleLater = () => {
+    localStorage.setItem('musifi_update_snooze_until', (Date.now() + 5 * 60 * 60 * 1000).toString());
+    if (latestVersion) {
+      localStorage.setItem('musifi_snoozed_version', latestVersion);
+    }
+    setShowPrompt(false);
+  };
+
   if (!showPrompt) return null;
 
   return (
@@ -121,7 +149,7 @@ export default function UpdatePrompt() {
       </div>
       <div className="flex space-x-2 w-full mt-1">
         <button 
-          onClick={() => setShowPrompt(false)} 
+          onClick={handleLater} 
           className="flex-1 px-4 py-2 text-xs font-medium text-gray-300 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors"
         >
           Later
