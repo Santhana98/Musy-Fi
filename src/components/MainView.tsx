@@ -653,7 +653,8 @@ export default function MainView({ searchQuery }: MainViewProps) {
 
   return (
     <div 
-      className={`flex-1 overflow-y-auto px-4 md:px-8 py-6 pb-36 md:pb-24 relative select-none bg-cover bg-center bg-no-repeat transition-all duration-500 ease-in-out ${
+      id="main-scroll-area"
+      className={`flex-1 overflow-y-auto px-4 md:px-8 pt-20 md:pt-24 pb-36 md:pb-24 relative select-none bg-cover bg-center bg-no-repeat transition-all duration-500 ease-in-out ${
         userTheme || isHome ? '' : 'bg-gradient-to-b from-zinc-900 to-bg-base'
       }`}
       style={{ backgroundImage: getBackgroundImage() }}

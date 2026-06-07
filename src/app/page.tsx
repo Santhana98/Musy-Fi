@@ -54,9 +54,11 @@ export default function DashboardPage() {
         <Sidebar />
 
         {/* Right Content Area */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-bg-base">
+        <div className="flex-1 flex flex-col overflow-hidden bg-bg-base relative">
           {/* Header containing search bar & user profile */}
-          <Header searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+          <div className="absolute top-0 left-0 right-0 z-50">
+            <Header searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+          </div>
 
           {/* Core main dashboard viewport */}
           <MainView searchQuery={searchQuery} />

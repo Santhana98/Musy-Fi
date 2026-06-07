@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { usePlayer } from '@/context/PlayerContext';
 import { 
@@ -20,8 +20,42 @@ export default function Header({ searchQuery = '', setSearchQuery }: HeaderProps
   const { data: session } = useSession();
   const { activeView, setActiveView } = usePlayer();
 
+  const [isVisible, setIsVisible] = useState(true);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const scrollArea = document.getElementById('main-scroll-area');
+    if (!scrollArea) return;
+
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLElement;
+      const currentScrollY = target.scrollTop;
+      
+      // Apply glass effect if scrolled past 10px
+      setIsScrolled(currentScrollY > 10);
+
+      // Hide if scrolling down past 60px, show if scrolling up
+      if (currentScrollY > lastScrollY.current && currentScrollY > 60) {
+        setIsVisible(false);
+      } else {
+        setIsVisible(true);
+      }
+      lastScrollY.current = currentScrollY;
+    };
+
+    scrollArea.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollArea.removeEventListener('scroll', handleScroll);
+  }, []);
+
   return (
-    <header className="glass-header h-16 flex items-center justify-between px-4 md:px-8 select-none z-50 sticky top-0">
+    <header 
+      className={`h-16 flex items-center justify-between px-4 md:px-8 select-none transition-all duration-300 ease-in-out ${
+        isVisible ? 'translate-y-0' : '-translate-y-full md:translate-y-0'
+      } ${
+        isScrolled ? 'glass-header' : 'bg-transparent border-transparent md:bg-[#070708]/75 md:backdrop-blur-xl md:border-b md:border-white/5'
+      }`}
+    >
       {/* Navigation History & Search Bar */}
       <div className="flex items-center gap-4 md:gap-6 flex-1">
         {/* Mobile Brand Logo (hidden on desktop and search page) */}
