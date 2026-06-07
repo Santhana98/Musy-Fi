@@ -109,23 +109,16 @@ export async function saveAudioFile(
           storageType: 'google',
           metadata,
         };
+      } else {
+        throw new Error('Google Drive API did not return a valid file ID.');
       }
+    } else {
+      throw new Error('Google Drive client could not be authenticated. Please check your Google account connection.');
     }
-  } catch (error) {
-    console.warn('Google Drive upload failed, falling back to local storage:', error);
+  } catch (error: any) {
+    console.error('[Storage] Google Drive upload failed:', error.message || error);
+    throw new Error(error.message || 'Unknown error occurred during Google Drive upload.');
   }
-
-  // Local Storage Fallback
-  const safeFileName = `${Date.now()}-${userId}-${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-  const filePath = path.join(LOCAL_STORAGE_DIR, safeFileName);
-  
-  await fs.promises.writeFile(filePath, buffer);
-
-  return {
-    sourceUrl: safeFileName,
-    storageType: 'mp3',
-    metadata,
-  };
 }
 
 /**

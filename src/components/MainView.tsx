@@ -86,6 +86,9 @@ export default function MainView({ searchQuery }: MainViewProps) {
   // File Upload State
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState(false);
+  const [uploadErrorMessage, setUploadErrorMessage] = useState('');
+  const [uploadSuccess, setUploadSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Link Paste State
@@ -270,6 +273,8 @@ export default function MainView({ searchQuery }: MainViewProps) {
     const fileMimeType = getMimeType(file.name, file.type);
 
     try {
+      setUploadError(false);
+      setUploadSuccess(false);
       setUploading(true);
       setUploadProgress(5);
       
@@ -356,6 +361,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
           setUploadProgress(0);
           fetchAllSongs();
           setActiveView('home');
+          setUploadSuccess(true);
         }, 500);
 
       } else {
@@ -386,17 +392,20 @@ export default function MainView({ searchQuery }: MainViewProps) {
             setUploadProgress(0);
             fetchAllSongs();
             setActiveView('home');
+            setUploadSuccess(true);
           }, 500);
         } else {
           const data = await res.json();
-          alert(data.error || 'Upload failed');
-          setUploading(false);
+          throw new Error(data.error || 'Upload failed');
         }
       }
     } catch (err: any) {
-      console.error('Error uploading file:', err);
-      alert(err.message || 'An error occurred during file upload.');
+      console.error('Google Drive Upload Error:', err);
+      setUploadErrorMessage(`❌ Unable to save song to Google Drive.\n\nPlease check:\n- Google account connection\n- Drive permissions\n- Internet connection\n\nTry again later.\n\n[Details: ${err.message}]`);
+      setUploadError(true);
       setUploading(false);
+      setUploadProgress(0);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -1588,13 +1597,25 @@ export default function MainView({ searchQuery }: MainViewProps) {
                   </div>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="bg-white hover:scale-105 text-black font-semibold text-xs px-6 py-2.5 rounded-full transition-all mt-4 w-full shadow-lg"
-                >
-                  Choose File
-                </button>
+                <div className="w-full mt-4 space-y-3 pt-4 border-t border-zinc-800">
+                  {uploadError && (
+                    <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded text-left text-xs whitespace-pre-wrap">
+                      {uploadErrorMessage}
+                    </div>
+                  )}
+                  {uploadSuccess && (
+                    <div className="bg-spotify-green/10 border border-spotify-green/20 text-spotify-green p-3 rounded text-left text-xs font-semibold">
+                      ✅ Song saved successfully to your cloud library.
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setUploadError(false); setUploadSuccess(false); fileInputRef.current?.click(); }}
+                    className="bg-white hover:scale-105 text-black font-semibold text-xs px-6 py-2.5 rounded-full transition-all w-full shadow-lg"
+                  >
+                    {uploadError ? 'Retry Upload' : 'Choose File'}
+                  </button>
+                </div>
               )}
             </div>
 
