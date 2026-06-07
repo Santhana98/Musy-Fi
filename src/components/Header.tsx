@@ -239,7 +239,7 @@ export default function Header({ searchQuery = '', setSearchQuery }: HeaderProps
 
           {/* Notification Popup */}
           {showUpdatePopup && (
-            <div className="absolute top-full right-0 mt-2 w-[calc(100vw-32px)] sm:w-80 max-w-sm bg-bg-card border border-border-muted p-4 rounded-xl shadow-2xl z-50 animate-in slide-in-from-top-2">
+            <div className="fixed inset-x-4 top-[72px] sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 sm:w-80 bg-bg-card border border-border-muted p-4 rounded-xl shadow-2xl z-50 animate-in slide-in-from-top-2">
               <div className="flex items-start justify-between mb-2">
                 <h3 className="font-bold text-[15px] flex items-center gap-2 text-white">
                   <span>✨</span> New Update Available
