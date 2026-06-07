@@ -21,9 +21,17 @@ export default function Header({ searchQuery = '', setSearchQuery }: HeaderProps
   const { activeView, setActiveView } = usePlayer();
 
   return (
-    <header className="glass-header h-16 flex items-center justify-between px-4 md:px-8 select-none z-10">
+    <header className="glass-header h-16 flex items-center justify-between px-4 md:px-8 select-none z-50 sticky top-0">
       {/* Navigation History & Search Bar */}
       <div className="flex items-center gap-4 md:gap-6 flex-1">
+        {/* Mobile Brand Logo (hidden on desktop and search page) */}
+        {activeView !== 'search' && (
+          <div className="md:hidden flex items-center gap-3 cursor-pointer" onClick={() => setActiveView('home')}>
+            <img src="/logo.jpg" alt="Musy-Fi Logo" className="w-8 h-8 rounded-full object-cover animate-spin" style={{ animationDuration: '15s' }} />
+            <span className="text-xl font-bold tracking-tight text-[#D62828]">Musy-Fi</span>
+          </div>
+        )}
+
         {/* Navigation History Arrows */}
         <div className="hidden md:flex items-center gap-2">
           <button 
