@@ -10,27 +10,15 @@ function captureLog(type: string, ...args: any[]) {
   const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
   const timestamp = new Date().toISOString();
   serverLogs.push(`[${timestamp}] [${type}] ${message}`);
-  if (serverLogs.length > 200) {
-    serverLogs.shift();
-  }
+  if (serverLogs.length > 200) serverLogs.shift();
 }
 
 const originalLog = console.log;
 const originalError = console.error;
 const originalWarn = console.warn;
-
-console.log = (...args: any[]) => {
-  captureLog('LOG', ...args);
-  originalLog(...args);
-};
-console.error = (...args: any[]) => {
-  captureLog('ERROR', ...args);
-  originalError(...args);
-};
-console.warn = (...args: any[]) => {
-  captureLog('WARN', ...args);
-  originalWarn(...args);
-};
+console.log = (...args: any[]) => { captureLog('LOG', ...args); originalLog(...args); };
+console.error = (...args: any[]) => { captureLog('ERROR', ...args); originalError(...args); };
+console.warn = (...args: any[]) => { captureLog('WARN', ...args); originalWarn(...args); };
 
 // Setup signature deciphering platform shim for Node 24+ compatibility
 Platform.shim.eval = async (data: any) => {
@@ -45,24 +33,10 @@ async function getInnertube(): Promise<Innertube> {
   return ytInstance;
 }
 
-const COBALT_INSTANCES = [
-  'https://subito-c.meowing.de',
-  'https://cobalt.omega.wolfy.love',
-  'https://grapefruit.clxxped.lol',
-  'https://nuko-c.meowing.de',
-  'https://apicobalt.mgytr.top',
-  'https://lime.clxxped.lol',
-  'https://fox.kittycat.boo',
-  'https://api.cobalt.tools'
-];
-
-const PIPED_INSTANCES = [
-  'https://pipedapi.kavin.rocks',
-  'https://pipedapi.colbyland.xyz',
-  'https://pipedapi.ox.al',
-  'https://api.piped.projectsegfau.lt',
-  'https://pipedapi.privacydev.net'
-];
+// ─── Your self-hosted Import API ─────────────────────────────────────────────
+// Set IMPORT_API_URL in your Render environment variables.
+// Example: https://musy-fi-import-api.onrender.com
+const IMPORT_API_URL = process.env.IMPORT_API_URL?.replace(/\/$/, '');
 
 function getYoutubeId(url: string): string | null {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -78,13 +52,12 @@ export interface YoutubeMetadata {
 }
 
 /**
- * Resolves YouTube video metadata using YouTube oEmbed, Piped, or Cobalt public instances.
+ * Resolves YouTube video metadata.
+ * Order: Your Import API → YouTube oEmbed → Noembed → youtubei.js → yt-dlp
  */
 export async function resolveYoutubeMetadata(url: string): Promise<YoutubeMetadata> {
   const videoId = getYoutubeId(url);
-  if (!videoId) {
-    throw new Error('Invalid YouTube URL');
-  }
+  if (!videoId) throw new Error('Invalid YouTube URL');
 
   const defaultResult = {
     title: `YouTube Track (${videoId})`,
@@ -98,31 +71,57 @@ export async function resolveYoutubeMetadata(url: string): Promise<YoutubeMetada
   let duration = 0;
   let thumbnail = '';
 
-  // 1. Try YouTube oEmbed (fastest and most reliable for title/artist/thumbnail)
-  try {
-    console.log(`[youtubeResolver] Fetching metadata from YouTube oEmbed for ${videoId}...`);
-    const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
-    const res = await fetch(oembedUrl, { signal: AbortSignal.timeout(5000) });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.title) title = data.title;
-      if (data.author_name) artist = data.author_name;
-      if (data.thumbnail_url) thumbnail = data.thumbnail_url;
+  // 1. Try your self-hosted Import API (fastest — already has yt-dlp inside)
+  if (IMPORT_API_URL) {
+    try {
+      console.log(`[youtubeResolver] Fetching metadata from Import API: ${IMPORT_API_URL}/api/info?url=${videoId}`);
+      const res = await fetch(`${IMPORT_API_URL}/api/info?url=${videoId}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.title)    title    = data.title;
+        if (data.artist)   artist   = data.artist || data.channel;
+        if (data.duration) duration = data.duration;
+        if (data.thumbnail) thumbnail = data.thumbnail;
+        console.log(`[youtubeResolver] Import API metadata success for ${videoId}`);
+      }
+    } catch (err: any) {
+      console.warn(`[youtubeResolver] Import API metadata failed:`, err.message);
     }
-  } catch (err: any) {
-    console.warn(`[youtubeResolver] YouTube oEmbed failed:`, err.message);
   }
 
-  // 1b. Try Noembed (extremely reliable fallback for cloud servers)
+  // 2. YouTube oEmbed (fast, reliable for title/artist/thumbnail)
+  if (!title) {
+    try {
+      console.log(`[youtubeResolver] Fetching metadata from YouTube oEmbed for ${videoId}...`);
+      const res = await fetch(
+        `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.title)        title     = data.title;
+        if (data.author_name)  artist    = data.author_name;
+        if (data.thumbnail_url) thumbnail = data.thumbnail_url;
+      }
+    } catch (err: any) {
+      console.warn(`[youtubeResolver] YouTube oEmbed failed:`, err.message);
+    }
+  }
+
+  // 3. Noembed fallback
   if (!title) {
     try {
       console.log(`[youtubeResolver] Fetching metadata from Noembed for ${videoId}...`);
-      const noembedUrl = `https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}`;
-      const res = await fetch(noembedUrl, { signal: AbortSignal.timeout(5000) });
+      const res = await fetch(
+        `https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}`,
+        { signal: AbortSignal.timeout(5000) }
+      );
       if (res.ok) {
         const data = await res.json();
-        if (data.title) title = data.title;
-        if (data.author_name) artist = data.author_name;
+        if (data.title)        title     = data.title;
+        if (data.author_name)  artist    = data.author_name;
         if (data.thumbnail_url) thumbnail = data.thumbnail_url;
       }
     } catch (err: any) {
@@ -130,34 +129,17 @@ export async function resolveYoutubeMetadata(url: string): Promise<YoutubeMetada
     }
   }
 
-  // 2. Try ytdl-core to get duration and fallback title
-  try {
-    console.log(`[youtubeResolver] Fetching metadata via ytdl-core: ${videoId}`);
-    const ytdl = require('@distube/ytdl-core');
-    const info = await ytdl.getBasicInfo(url);
-    if (info?.videoDetails) {
-      if (!title) title = info.videoDetails.title;
-      if (!artist) artist = info.videoDetails.author?.name;
-      if (!duration) duration = parseInt(info.videoDetails.lengthSeconds || '0', 10);
-      if (!thumbnail && info.videoDetails.thumbnails?.length) {
-        thumbnail = info.videoDetails.thumbnails[0].url;
-      }
-    }
-  } catch (err: any) {
-    console.warn(`[youtubeResolver] ytdl-core metadata resolution failed:`, err.message);
-  }
-
-  // 3. Try youtubei.js
+  // 4. youtubei.js
   if (!title || !duration) {
     try {
       console.log(`[youtubeResolver] Fetching metadata via youtubei.js: ${videoId}`);
       const yt = await getInnertube();
       const info = await yt.getBasicInfo(videoId);
-      if (info && info.basic_info) {
-        if (!title) title = info.basic_info.title || '';
-        if (!artist) artist = info.basic_info.author || '';
-        if (!duration) duration = info.basic_info.duration || 0;
-        if (!thumbnail && info.basic_info.thumbnail && info.basic_info.thumbnail.length > 0) {
+      if (info?.basic_info) {
+        if (!title)     title     = info.basic_info.title || '';
+        if (!artist)    artist    = info.basic_info.author || '';
+        if (!duration)  duration  = info.basic_info.duration || 0;
+        if (!thumbnail && info.basic_info.thumbnail?.length) {
           thumbnail = info.basic_info.thumbnail[0].url;
         }
       }
@@ -166,15 +148,15 @@ export async function resolveYoutubeMetadata(url: string): Promise<YoutubeMetada
     }
   }
 
-  // 4. Try yt-dlp
+  // 5. yt-dlp (local binary — last resort for metadata)
   if (!title || !duration) {
     try {
       console.log(`[youtubeResolver] Fetching metadata via yt-dlp: ${url}`);
       const data = await getYtDlpMetadata(url);
       if (data) {
-        if (!title) title = data.title || '';
-        if (!artist) artist = data.uploader || '';
-        if (!duration) duration = data.duration || 0;
+        if (!title)     title     = data.title || '';
+        if (!artist)    artist    = data.uploader || '';
+        if (!duration)  duration  = data.duration || 0;
         if (!thumbnail) thumbnail = data.thumbnail || '';
       }
     } catch (err: any) {
@@ -182,164 +164,91 @@ export async function resolveYoutubeMetadata(url: string): Promise<YoutubeMetada
     }
   }
 
-  // 5. Try Piped
-  if (!title || !duration) {
-    for (const instance of PIPED_INSTANCES) {
-      try {
-        console.log(`[youtubeResolver] Fetching metadata from Piped: ${instance}/streams/${videoId}`);
-        const res = await fetch(`${instance}/streams/${videoId}`, { signal: AbortSignal.timeout(4000) });
-        if (res.ok) {
-          const data = await res.json();
-          if (!title) title = data.title || '';
-          if (!artist) artist = data.uploader || '';
-          if (!duration) duration = data.duration || 0;
-          if (!thumbnail) thumbnail = data.thumbnailUrl || '';
-          break;
-        }
-      } catch (err: any) {
-        console.warn(`[youtubeResolver] Piped metadata fetch failed for ${instance}:`, err.message);
-      }
-    }
-  }
-
   return {
-    title: title || defaultResult.title,
-    artist: artist || defaultResult.artist,
-    duration: duration || defaultResult.duration,
+    title:     title     || defaultResult.title,
+    artist:    artist    || defaultResult.artist,
+    duration:  duration  || defaultResult.duration,
     thumbnail: thumbnail || defaultResult.thumbnail,
   };
 }
 
 /**
  * Returns an audio Readable stream for a given YouTube URL.
+ * Order: Your Import API stream → youtubei.js → yt-dlp local binary
  */
 export async function resolveYoutubeAudioStream(url: string): Promise<Readable> {
   const videoId = getYoutubeId(url);
-  if (!videoId) {
-    throw new Error('Invalid YouTube URL');
+  if (!videoId) throw new Error('Invalid YouTube URL');
+
+  // 1. Your self-hosted Import API — pipes audio directly
+  if (IMPORT_API_URL) {
+    try {
+      console.log(`[youtubeResolver] Requesting audio stream from Import API: ${IMPORT_API_URL}/api/stream?url=${videoId}`);
+      const res = await fetch(`${IMPORT_API_URL}/api/stream?url=${videoId}&format=mp3&quality=192`, {
+        signal: AbortSignal.timeout(15000),
+      });
+      if (res.ok && res.body) {
+        console.log(`[youtubeResolver] Import API stream success for ${videoId}`);
+        return Readable.fromWeb(res.body as any);
+      }
+    } catch (err: any) {
+      console.warn(`[youtubeResolver] Import API stream failed:`, err.message);
+    }
   }
 
-  // 1. Try youtubei.js (Innertube) first (native, direct streaming)
+  // 2. youtubei.js (Innertube) — native direct streaming
   try {
     console.log(`[youtubeResolver] Requesting audio stream via youtubei.js: ${videoId}`);
     const yt = await getInnertube();
     const stream = await yt.download(videoId, {
       type: 'audio',
       quality: 'best',
-      client: 'YTMUSIC'
+      client: 'YTMUSIC',
     });
-    if (stream) {
-      return Readable.fromWeb(stream as any);
-    }
+    if (stream) return Readable.fromWeb(stream as any);
   } catch (err: any) {
     console.warn(`[youtubeResolver] youtubei.js streaming failed:`, err.message);
   }
 
-  // Try yt-dlp fallback (extremely reliable, native stream)
+  // 3. yt-dlp local binary
   try {
     console.log(`[youtubeResolver] Requesting audio stream via yt-dlp: ${url}`);
     const stream = await getYtDlpAudioStream(url);
-    if (stream) {
-      return stream;
-    }
+    if (stream) return stream;
   } catch (err: any) {
     console.warn(`[youtubeResolver] yt-dlp streaming failed:`, err.message);
   }
 
-  // 2. Try Cobalt first (often converts to MP3/M4A directly and serves fast)
-  for (const instance of COBALT_INSTANCES) {
-    try {
-      console.log(`[youtubeResolver] Requesting audio stream from Cobalt: ${instance}`);
-      const res = await fetch(instance, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          url: url,
-          downloadMode: 'audio',
-          audioFormat: 'best',
-        }),
-        signal: AbortSignal.timeout(9500) // Maximize time within serverless limit
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text().catch(() => '');
-        throw new Error(`HTTP Error ${res.status}: ${errorText || 'No response body'}`);
-      }
-
-      const data = await res.json();
-      if (data.status === 'error') {
-        throw new Error(`Cobalt returned error: ${data.text || JSON.stringify(data)}`);
-      }
-
-      if (data.url) {
-        console.log(`[youtubeResolver] Cobalt resolved stream URL: ${data.url}`);
-        const downloadRes = await fetch(data.url, {
-          signal: AbortSignal.timeout(9500)
-        });
-        if (!downloadRes.ok) {
-          throw new Error(`Download HTTP Error ${downloadRes.status}`);
-        }
-        if (!downloadRes.body) {
-          throw new Error('Response body is empty');
-        }
-        return Readable.fromWeb(downloadRes.body as any);
-      } else {
-        throw new Error(`Invalid response format: ${JSON.stringify(data)}`);
-      }
-    } catch (err: any) {
-      console.warn(`[youtubeResolver] Cobalt streaming failed for ${instance}:`, err.message);
-    }
-  }
-
-  // 2. Try Piped API fallback
-  for (const instance of PIPED_INSTANCES) {
-    try {
-      console.log(`[youtubeResolver] Requesting audio stream from Piped: ${instance}`);
-      const res = await fetch(`${instance}/streams/${videoId}`, {
-        signal: AbortSignal.timeout(7000)
-      });
-      if (!res.ok) {
-        throw new Error(`HTTP Error ${res.status}`);
-      }
-      const data = await res.json();
-      const audioStreams = data.audioStreams || [];
-      if (audioStreams.length === 0) {
-        throw new Error('No audio streams found in Piped response');
-      }
-      // Prefer M4A or high-quality audio
-      const bestAudio = audioStreams.find((s: any) => s.format === 'M4A' || s.mimeType.includes('mp4')) || audioStreams[0];
-      console.log(`[youtubeResolver] Piped resolved audio stream URL: ${bestAudio.url}`);
-      const downloadRes = await fetch(bestAudio.url, {
-        signal: AbortSignal.timeout(9500)
-      });
-      if (!downloadRes.ok) {
-        throw new Error(`Download HTTP Error ${downloadRes.status}`);
-      }
-      if (!downloadRes.body) {
-        throw new Error('Response body is empty');
-      }
-      return Readable.fromWeb(downloadRes.body as any);
-    } catch (err: any) {
-      console.warn(`[youtubeResolver] Piped streaming failed for ${instance}:`, err.message);
-    }
-  }
-
-  throw new Error('Failed to resolve YouTube audio stream from all public services');
+  throw new Error('Failed to resolve YouTube audio stream from all available sources');
 }
 
 /**
  * Resolves a direct audio streaming URL.
+ * Order: Your Import API stream URL → youtubei.js → yt-dlp local binary
  */
 export async function resolveYoutubeDirectUrl(url: string): Promise<string> {
   const videoId = getYoutubeId(url);
-  if (!videoId) {
-    throw new Error('Invalid YouTube URL');
+  if (!videoId) throw new Error('Invalid YouTube URL');
+
+  // 1. Your self-hosted Import API — return the stream endpoint as the "direct URL"
+  //    The stream route in Musy-Fi will proxy this transparently.
+  if (IMPORT_API_URL) {
+    try {
+      // Verify the API is reachable before returning the URL
+      const healthRes = await fetch(`${IMPORT_API_URL}/health`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (healthRes.ok) {
+        const streamUrl = `${IMPORT_API_URL}/api/stream?url=${videoId}&format=mp3&quality=192`;
+        console.log(`[youtubeResolver] Import API health OK — using stream URL: ${streamUrl}`);
+        return streamUrl;
+      }
+    } catch (err: any) {
+      console.warn(`[youtubeResolver] Import API health check failed:`, err.message);
+    }
   }
 
-  // 1. Try youtubei.js (Innertube) first (resolves and deciphers direct URL)
+  // 2. youtubei.js (Innertube) — resolves and deciphers direct URL
   try {
     console.log(`[youtubeResolver] Resolving direct URL via youtubei.js: ${videoId}`);
     const yt = await getInnertube();
@@ -356,76 +265,14 @@ export async function resolveYoutubeDirectUrl(url: string): Promise<string> {
     console.warn(`[youtubeResolver] youtubei.js direct URL resolution failed:`, err.message);
   }
 
-  // Try yt-dlp fallback (extremely reliable, cached)
+  // 3. yt-dlp local binary
   try {
     console.log(`[youtubeResolver] Resolving direct URL via yt-dlp: ${url}`);
     const directUrl = await getYtDlpDirectUrl(url);
-    if (directUrl) {
-      return directUrl;
-    }
+    if (directUrl) return directUrl;
   } catch (err: any) {
     console.warn(`[youtubeResolver] yt-dlp direct URL resolution failed:`, err.message);
   }
 
-  // Try Cobalt first
-  for (const instance of COBALT_INSTANCES) {
-    try {
-      console.log(`[youtubeResolver] Resolving direct URL via Cobalt: ${instance}`);
-      const res = await fetch(instance, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          url: url,
-          downloadMode: 'audio',
-          audioFormat: 'best',
-        }),
-        signal: AbortSignal.timeout(9500)
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text().catch(() => '');
-        throw new Error(`HTTP Error ${res.status}: ${errorText || 'No response body'}`);
-      }
-
-      const data = await res.json();
-      if (data.status === 'error') {
-        throw new Error(`Cobalt error: ${data.text || JSON.stringify(data)}`);
-      }
-      if (data.url) {
-        return data.url;
-      } else {
-        throw new Error(`Invalid response: ${JSON.stringify(data)}`);
-      }
-    } catch (err: any) {
-      console.warn(`[youtubeResolver] Cobalt direct URL resolution failed for ${instance}:`, err.message);
-    }
-  }
-
-  // Try Piped fallback
-  for (const instance of PIPED_INSTANCES) {
-    try {
-      console.log(`[youtubeResolver] Resolving direct URL via Piped: ${instance}`);
-      const res = await fetch(`${instance}/streams/${videoId}`, {
-        signal: AbortSignal.timeout(7000)
-      });
-      if (!res.ok) {
-        throw new Error(`HTTP Error ${res.status}`);
-      }
-      const data = await res.json();
-      const audioStreams = data.audioStreams || [];
-      if (audioStreams.length > 0) {
-        const bestAudio = audioStreams.find((s: any) => s.format === 'M4A' || s.mimeType.includes('mp4')) || audioStreams[0];
-        return bestAudio.url;
-      } else {
-        throw new Error('No audio streams found');
-      }
-    } catch (err: any) {
-      console.warn(`[youtubeResolver] Piped direct URL resolution failed for ${instance}:`, err.message);
-    }
-  }
-
-  throw new Error('Failed to resolve direct streaming URL from all public services');
+  throw new Error('Failed to resolve direct streaming URL from all available sources');
 }
