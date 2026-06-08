@@ -65,78 +65,58 @@ export async function GET(request: NextRequest) {
     const range = request.headers.get('range');
 
     if (song.type === 'youtube') {
+      // ── Client-side direct streaming ────────────────────────────────────────
+      // IMPORTANT: We do NOT proxy YouTube audio bytes through Render.
+      // Render's shared datacenter IP gets blocked/rate-limited by YouTube.
+      //
+      // Instead:
+      //   1. Render resolves the signed direct YouTube CDN URL (fast, no bytes transferred)
+      //   2. We return it to the browser as a JSON response
+      //   3. The browser fetches audio directly from YouTube using the USER'S IP
+      //      → YouTube sees a normal home/mobile IP → no blocking
+      //
+      // The MusicPlayer handles this: if Content-Type is application/json, it
+      // reads the { directUrl } field and sets it as the <audio> src directly.
       try {
         const videoUrl = `https://www.youtube.com/watch?v=${song.sourceUrl}`;
-        const directUrl = await resolveYoutubeDirectUrl(videoUrl);
 
-        // Instead of redirecting to the googlevideo.com CDN (which blocks the client due to IP-locking),
-        // we proxy the request, passing through the Range header if requested.
-        const requestHeaders: Record<string, string> = {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        };
-        if (range) {
-          requestHeaders['Range'] = range;
-        }
+        // Try Import API first (also uses yt-dlp, but on its own IP/container)
+        const importApiUrl = process.env.IMPORT_API_URL?.replace(/\/$/, '');
+        let directUrl = '';
 
-        const proxiedResponse = await fetch(directUrl, {
-          headers: requestHeaders,
-        });
-
-        if (!proxiedResponse.ok) {
-          throw new Error(`Upstream returned status ${proxiedResponse.status} ${proxiedResponse.statusText}`);
-        }
-
-        if (!proxiedResponse.body) {
-          throw new Error('Response body is empty');
-        }
-
-        // Wrap the response body in a ReadableStream to stream it back to the client
-        const webStream = new ReadableStream({
-          start(controller) {
-            const reader = proxiedResponse.body?.getReader();
-            if (!reader) {
-              controller.close();
-              return;
+        if (importApiUrl) {
+          try {
+            // Ask Import API for the signed direct YouTube URL — fast yt-dlp call
+            const dirRes = await fetch(`${importApiUrl}/api/directurl?url=${song.sourceUrl}`, {
+              signal: AbortSignal.timeout(8000),
+            });
+            if (dirRes.ok) {
+              const data = await dirRes.json();
+              if (data.directUrl) directUrl = data.directUrl;
             }
-            const activeReader = reader;
-            function push() {
-              activeReader.read().then(({ done, value }) => {
-                if (done) {
-                  controller.close();
-                  return;
-                }
-                controller.enqueue(value);
-                push();
-              }).catch(err => {
-                controller.error(err);
-              });
-            }
-            push();
+          } catch {
+            directUrl = '';
           }
-        });
-
-        const responseHeaders = new Headers();
-        responseHeaders.set('Content-Type', proxiedResponse.headers.get('content-type') || 'audio/mpeg');
-        responseHeaders.set('Accept-Ranges', 'bytes');
-        responseHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-
-        const contentRange = proxiedResponse.headers.get('content-range');
-        if (contentRange) {
-          responseHeaders.set('Content-Range', contentRange);
         }
 
-        const contentLength = proxiedResponse.headers.get('content-length');
-        if (contentLength) {
-          responseHeaders.set('Content-Length', contentLength);
+        // Fallback: resolve direct YouTube CDN URL via yt-dlp on this server
+        if (!directUrl) {
+          directUrl = await resolveYoutubeDirectUrl(videoUrl);
         }
 
-        return new Response(webStream, {
-          status: proxiedResponse.status,
-          headers: responseHeaders,
-        });
+        // Return URL to browser — audio bytes never touch Render
+        return NextResponse.json(
+          { directUrl, videoId: song.sourceUrl },
+          {
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Access-Control-Allow-Origin': '*',
+            },
+          }
+        );
       } catch (err: any) {
-        console.error('Failed to proxy YouTube stream:', err);
-        return new NextResponse(`Failed to stream YouTube: ${err.message}`, { status: 500 });
+        console.error('[stream] Failed to resolve YouTube direct URL:', err);
+        return new NextResponse(`Failed to resolve YouTube stream: ${err.message}`, { status: 500 });
       }
     }
 
@@ -280,3 +260,4 @@ export async function GET(request: NextRequest) {
     return new NextResponse(error.message || 'Error streaming audio file', { status: 500 });
   }
 }
+
