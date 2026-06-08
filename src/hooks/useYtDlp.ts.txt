@@ -1,0 +1,22 @@
+import { Capacitor } from '@capacitor/core';
+import { registerPlugin } from '@capacitor/core';
+
+const YtDlp = registerPlugin('YtDlp');
+
+export async function getYouTubeAudioUrl(youtubeUrl: string): Promise<string> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const result = await YtDlp.getAudioUrl({ url: youtubeUrl });
+      return result.url;
+    } catch (error) {
+      console.error('Local extraction failed:', error);
+      throw error;
+    }
+  }
+  
+  throw new Error('Please install the Musy-Fi app for YouTube playback');
+}
+
+export function isNativeApp(): boolean {
+  return Capacitor.isNativePlatform();
+}

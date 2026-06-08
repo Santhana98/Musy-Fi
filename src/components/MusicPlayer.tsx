@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 
 import VinylPlayer from './VinylPlayer';
+import { getYouTubeAudioUrl, isNativeApp } from '../hooks/useYtDlp';
 
 // Dynamically import ReactPlayer with SSR disabled since it uses window/navigator APIs
 const ReactPlayer = dynamic(() => import('react-player'), { ssr: false }) as any;
@@ -58,7 +59,7 @@ export default function MusicPlayer() {
   const [streamUrl, setStreamUrl] = useState<string>('');
   const [nextTrackUrl, setNextTrackUrl] = useState<string>('');
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<<HTMLAudioElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
   const lastLoadedTrackIdRef = useRef<string>('');
   const activeBlobUrlRef = useRef<string>('');
@@ -133,8 +134,24 @@ export default function MusicPlayer() {
         console.log(`[MusicPlayer] Google Drive track "${currentTrack.title}" has no access token. Trying public CDN URL...`);
         setStreamUrl(publicUrl);
       }
+    } else if (currentTrack.type === 'youtube') {
+      // Use local yt-dlp on device (Android app) instead of server
+      if (isNativeApp()) {
+        getYouTubeAudioUrl(currentTrack.sourceUrl)
+          .then((localUrl) => {
+            setStreamUrl(localUrl);
+          })
+          .catch((err) => {
+            console.error('[MusicPlayer] Local yt-dlp failed:', err);
+            // Fallback to server if local fails
+            setStreamUrl(proxyUrl);
+          });
+      } else {
+        // Web browser - must use server (will be blocked by YouTube)
+        setStreamUrl(proxyUrl);
+      }
     } else {
-      // YouTube or normal mp3 tracks use proxyUrl
+      // Normal mp3 tracks use proxyUrl
       setStreamUrl(proxyUrl);
     }
 
@@ -420,7 +437,7 @@ export default function MusicPlayer() {
     }
   };
 
-  const handleAudioError = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
+  const handleAudioError = (e: React.SyntheticEvent<<HTMLAudioElement, Event>) => {
     const err = e.currentTarget.error;
     console.error('HTML5 Audio error encountered:', err);
     
@@ -489,13 +506,13 @@ export default function MusicPlayer() {
   };
 
   // Unified Seek Slider actions
-  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSeekChange = (e: React.ChangeEvent<<HTMLInputElement>) => {
     setIsSeeking(true);
     const value = parseFloat(e.target.value);
     setProgress(value);
   };
 
-  const handleSeekEnd = (e: React.MouseEvent<HTMLInputElement> | React.TouchEvent<HTMLInputElement>) => {
+  const handleSeekEnd = (e: React.MouseEvent<<HTMLInputElement> | React.TouchEvent<<HTMLInputElement>) => {
     setIsSeeking(false);
     const value = parseFloat((e.target as HTMLInputElement).value);
     
@@ -521,8 +538,6 @@ export default function MusicPlayer() {
     const secs = Math.floor(time % 60);
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
-
-
 
   return (
     <>

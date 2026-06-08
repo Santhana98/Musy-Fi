@@ -1,4 +1,4 @@
-const CACHE_NAME = 'musifi-cache-v3'; // Increment version to invalidate old caches
+const CACHE_NAME = 'musifi-cache-65cc0e9be4289b2f'; // Increment version to invalidate old caches
 const PRECACHE_ASSETS = [
   '/manifest.json',
 ];
