@@ -23,7 +23,6 @@ import {
 } from 'lucide-react';
 
 import VinylPlayer from './VinylPlayer';
-import { getYouTubeAudioUrl, isNativeApp } from '../hooks/useYtDlp';
 
 // Dynamically import ReactPlayer with SSR disabled since it uses window/navigator APIs
 const ReactPlayer = dynamic(() => import('react-player'), { ssr: false }) as any;
@@ -100,7 +99,7 @@ export default function MusicPlayer() {
   const [streamUrl, setStreamUrl] = useState<string>('');
   const [nextTrackUrl, setNextTrackUrl] = useState<string>('');
 
-  const audioRef = useRef<<HTMLAudioElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
   const lastLoadedTrackIdRef = useRef<string>('');
   const activeBlobUrlRef = useRef<string>('');
@@ -119,7 +118,6 @@ export default function MusicPlayer() {
   }, []);
 
   // ── Import status polling ──────────────────────────────────────────────────
-  // Polls every 4s when a YouTube song is pending conversion to Google Drive.
   useEffect(() => {
     if (!currentTrack || currentTrack.type !== 'youtube') {
       setImportStatus(null);
@@ -136,9 +134,6 @@ export default function MusicPlayer() {
         if (cancelled) return;
         setImportStatus(data.importStatus);
         if (data.importStatus === 'ready' && data.type === 'google') {
-          // Conversion done — update the track type in the player context so it
-          // switches to the Drive stream URL without the user having to reload.
-          // We just reload the stream URL to the new proxy.
           const token = (session?.user as any)?.id || '';
           setStreamUrl(`/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`);
         }
@@ -162,12 +157,10 @@ export default function MusicPlayer() {
       return;
     }
     
-    // Only update streamUrl if the track actually changed.
     if (lastLoadedTrackIdRef.current === currentTrack.id && streamUrl) {
       return;
     }
 
-    // Revoke previous blob URL if it exists
     if (activeBlobUrlRef.current) {
       URL.revokeObjectURL(activeBlobUrlRef.current);
       activeBlobUrlRef.current = '';
@@ -179,12 +172,8 @@ export default function MusicPlayer() {
 
     if (currentTrack.type === 'google') {
       if (accessToken) {
-        console.log(`[MusicPlayer] Fetching Google Drive track "${currentTrack.title}" client-side...`);
-
-        // Check browser cache first — instant playback on repeat
         getCachedAudio(currentTrack.id).then(cachedUrl => {
           if (cachedUrl) {
-            console.log(`[MusicPlayer] Cache hit for "${currentTrack.title}" — playing from local cache.`);
             activeBlobUrlRef.current = cachedUrl;
             setStreamUrl(cachedUrl);
             return;
@@ -196,10 +185,8 @@ export default function MusicPlayer() {
               if (!res.ok) throw new Error(`Google API returned status ${res.status}`);
               const blob = await res.blob();
               const blobUrl = URL.createObjectURL(blob);
-              console.log(`[MusicPlayer] Client-side fetch success for "${currentTrack.title}". Playing from local Object URL.`);
               activeBlobUrlRef.current = blobUrl;
               setStreamUrl(blobUrl);
-              // Save to browser cache for next time
               cacheAudioFromBlob(currentTrack.id, blob);
             })
             .catch((err) => {
@@ -208,35 +195,10 @@ export default function MusicPlayer() {
             });
         });
       } else {
-        // Fall back to direct public CDN link
         const publicUrl = `https://lh3.googleusercontent.com/d/${currentTrack.sourceUrl}`;
-        console.log(`[MusicPlayer] Google Drive track "${currentTrack.title}" has no access token. Trying public CDN URL...`);
         setStreamUrl(publicUrl);
       }
-    } else if (currentTrack.type === 'youtube') {
-      // Use local yt-dlp on device (Android app) instead of server
-      if (isNativeApp()) {
-        getYouTubeAudioUrl(currentTrack.sourceUrl)
-          .then((localUrl) => {
-            setStreamUrl(localUrl);
-          })
-          .catch((err) => {
-            console.error('[MusicPlayer] Local yt-dlp failed:', err);
-            // Fallback to server if local fails
-            setStreamUrl(proxyUrl);
-          });
-      } else {
-        // Web browser - must use server (will be blocked by YouTube)
-        setStreamUrl(proxyUrl);
-      }
     } else {
-<<<<<<< HEAD
-      // Normal mp3 tracks use proxyUrl
-=======
-      // ── YouTube tracks: fetch direct URL, play from user's IP ──────────────
-      // The stream route now returns JSON { directUrl } instead of proxying bytes.
-      // The browser fetches audio directly from YouTube CDN using the user's own IP.
-      // This completely bypasses Render's blocked datacenter IP.
       if (currentTrack.type === 'youtube') {
         const token = (session?.user as any)?.id || '';
         const resolveUrl = `/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`;
@@ -244,34 +206,25 @@ export default function MusicPlayer() {
         fetch(resolveUrl)
           .then(async (res) => {
             const contentType = res.headers.get('content-type') || '';
-
-            // New behaviour: server returns { directUrl } JSON
             if (contentType.includes('application/json')) {
               const data = await res.json();
               if (data.directUrl) {
-                console.log(`[MusicPlayer] Got direct URL for "${currentTrack.title}" — browser fetching from user IP`);
                 setStreamUrl(data.directUrl);
                 lastLoadedTrackIdRef.current = currentTrack.id;
                 return;
               }
             }
-
-            // Fallback: old proxy behaviour (server returns audio stream directly)
-            console.warn('[MusicPlayer] Stream route returned audio stream (legacy proxy), using proxy URL');
             setStreamUrl(resolveUrl);
           })
           .catch((err) => {
             console.warn('[MusicPlayer] Failed to resolve YouTube direct URL:', err);
-            // Last resort: set the proxy URL and hope for the best
             setStreamUrl(resolveUrl);
           });
 
         lastLoadedTrackIdRef.current = currentTrack.id;
-        return; // exit — setStreamUrl is called async above
+        return;
       }
 
-      // Normal mp3 / local tracks — use proxy stream as before
->>>>>>> 5e788170c2de14ac26b561a8ed1f25f49a39604d
       setStreamUrl(proxyUrl);
     }
 
@@ -294,7 +247,6 @@ export default function MusicPlayer() {
       const token = (session?.user as any)?.id || '';
       const accessToken = (session?.user as any)?.accessToken || '';
       
-      // Revoke previous preloaded blob if it exists
       if (nextBlobUrlRef.current) {
         URL.revokeObjectURL(nextBlobUrlRef.current);
         nextBlobUrlRef.current = '';
@@ -302,27 +254,17 @@ export default function MusicPlayer() {
 
       if (nextTrackObj.type === 'google') {
         if (accessToken) {
-          console.log(`[MusicPlayer] Pre-fetching next Google Drive track "${nextTrackObj.title}" client-side...`);
           const driveUrl = `https://www.googleapis.com/drive/v3/files/${nextTrackObj.sourceUrl}?alt=media`;
-          
-          fetch(driveUrl, {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          })
+          fetch(driveUrl, { headers: { Authorization: `Bearer ${accessToken}` } })
             .then(async (res) => {
-              if (!res.ok) {
-                throw new Error(`Google API returned status ${res.status}`);
-              }
+              if (!res.ok) throw new Error(`Google API returned status ${res.status}`);
               const blob = await res.blob();
               const blobUrl = URL.createObjectURL(blob);
-              console.log(`[MusicPlayer] Client-side pre-fetch success for "${nextTrackObj.title}".`);
               nextBlobUrlRef.current = blobUrl;
               setNextTrackUrl(blobUrl);
             })
             .catch((err) => {
               console.warn('[MusicPlayer] Client-side preload fetch failed:', err);
-              // Fallback to proxy URL
               setNextTrackUrl(`/api/songs/stream?id=${nextTrackObj.id}${token ? `&token=${token}` : ''}`);
             });
         } else {
@@ -350,14 +292,12 @@ export default function MusicPlayer() {
     if (/^[a-zA-Z0-9_-]{11}$/.test(sourceUrl)) {
       return `https://www.youtube.com/watch?v=${sourceUrl}`;
     }
-
     try {
       const url = new URL(sourceUrl);
       const videoId =
         url.searchParams.get('v') ||
         url.pathname.match(/\/(?:embed|shorts)\/([a-zA-Z0-9_-]{11})/)?.[1] ||
         (url.hostname.includes('youtu.be') ? url.pathname.split('/').filter(Boolean)[0] : null);
-
       return videoId ? `https://www.youtube.com/watch?v=${videoId}` : sourceUrl;
     } catch {
       return sourceUrl;
@@ -370,7 +310,6 @@ export default function MusicPlayer() {
     } else if (audioRef.current) {
       audioRef.current.currentTime = seconds;
     }
-
     setProgress(seconds);
   };
 
@@ -378,28 +317,22 @@ export default function MusicPlayer() {
     setUseVideoFallback(false);
   }, [currentTrack?.id]);
 
-  // 1. Force reload audio source when track changes
   useEffect(() => {
     if (!audioRef.current || isVideoTrack || !currentTrack) return;
-    
     try {
       audioRef.current.load();
     } catch (err) {
       console.warn('Audio element load failed:', err);
     }
-    
     if (isPlaying) {
       audioRef.current.play().catch(err => {
         console.warn('Initial play on track change interrupted:', err);
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrack?.id, isVideoTrack]);
 
-  // 2. Synchronize Play/Pause toggling
   useEffect(() => {
     if (!audioRef.current || isVideoTrack || !currentTrack) return;
-
     if (isPlaying) {
       if (audioRef.current.paused) {
         audioRef.current.play().catch(err => {
@@ -413,7 +346,6 @@ export default function MusicPlayer() {
     }
   }, [isPlaying, isVideoTrack, currentTrack]);
 
-  // 2. Volume synchronization
   useEffect(() => {
     const currentVol = isMuted ? 0 : volume;
     if (audioRef.current) {
@@ -421,11 +353,8 @@ export default function MusicPlayer() {
     }
   }, [volume, isMuted]);
 
-  // 3. Media Session API for background lockscreen metadata and controls
   useEffect(() => {
     if (!currentTrack || typeof window === 'undefined' || !('mediaSession' in navigator)) return;
-
-    // Set metadata
     navigator.mediaSession.metadata = new window.MediaMetadata({
       title: currentTrack.title,
       artist: currentTrack.artist,
@@ -434,43 +363,29 @@ export default function MusicPlayer() {
         ? [{ src: currentTrack.thumbnail, sizes: '300x300', type: 'image/jpeg' }]
         : [{ src: '/placeholder-artwork.jpg', sizes: '300x300', type: 'image/jpeg' }]
     });
-
-    // Action Handlers
     navigator.mediaSession.setActionHandler('play', () => setPlaying(true));
     navigator.mediaSession.setActionHandler('pause', () => setPlaying(false));
     navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack());
     navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
-
     try {
       navigator.mediaSession.setActionHandler('seekto', (details) => {
-        if (details.seekTime !== undefined) {
-          seekTo(details.seekTime);
-        }
+        if (details.seekTime !== undefined) seekTo(details.seekTime);
       });
-    } catch (err) {
-      console.warn('Media Session seekto not supported:', err);
-    }
-
+    } catch (err) {}
     try {
       navigator.mediaSession.setActionHandler('seekbackward', (details) => {
         const offset = details.seekOffset || 10;
         const current = audioRef.current && !isVideoTrack ? audioRef.current.currentTime : progress;
         seekTo(Math.max(0, current - offset));
       });
-    } catch (err) {
-      console.warn('Media Session seekbackward not supported:', err);
-    }
-
+    } catch (err) {}
     try {
       navigator.mediaSession.setActionHandler('seekforward', (details) => {
         const offset = details.seekOffset || 10;
         const current = audioRef.current && !isVideoTrack ? audioRef.current.currentTime : progress;
         seekTo(Math.min(duration || 0, current + offset));
       });
-    } catch (err) {
-      console.warn('Media Session seekforward not supported:', err);
-    }
-
+    } catch (err) {}
     return () => {
       navigator.mediaSession.setActionHandler('play', null);
       navigator.mediaSession.setActionHandler('pause', null);
@@ -484,12 +399,9 @@ export default function MusicPlayer() {
     };
   }, [currentTrack, duration, progress, isVideoTrack]);
 
-  // 4. Synchronize Playback State & Position with Media Session API dynamically
   useEffect(() => {
     if (typeof window === 'undefined' || !('mediaSession' in navigator) || !currentTrack) return;
-
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
-
     try {
       if ('setPositionState' in navigator.mediaSession) {
         if (duration && duration > 0 && progress >= 0 && progress <= duration) {
@@ -500,41 +412,27 @@ export default function MusicPlayer() {
           });
         }
       }
-    } catch (err) {
-      console.warn('Could not set mediaSession position state:', err);
-    }
+    } catch (err) {}
   }, [isPlaying, progress, duration, currentTrack]);
 
-  // 5. Force track restart on trigger (tapping the currently playing song again)
   useEffect(() => {
     if (trackRestartTrigger === 0 || !currentTrack) return;
-    
-    console.log(`[MusicPlayer] Restarting current track "${currentTrack.title}" on tap...`);
-    
     if (isVideoTrack && ytPlayerRef.current) {
       try {
         ytPlayerRef.current.seekTo(0, 'seconds');
-      } catch (err) {
-        console.warn('Video player seek failed on tap:', err);
-      }
+      } catch (err) {}
     } else if (audioRef.current) {
       try {
         audioRef.current.currentTime = 0;
-        audioRef.current.play().catch(err => {
-          console.warn('Audio play failed on tap:', err);
-        });
-      } catch (err) {
-        console.warn('Audio player seek failed on tap:', err);
-      }
+        audioRef.current.play().catch(err => {});
+      } catch (err) {}
     }
-    
     setProgress(0);
     setPlaying(true);
   }, [trackRestartTrigger]);
 
   if (!currentTrack) return null;
 
-  // Handle HTML5 Audio Callbacks
   const handleAudioTimeUpdate = () => {
     if (isSeeking || !audioRef.current) return;
     setProgress(audioRef.current.currentTime);
@@ -545,101 +443,65 @@ export default function MusicPlayer() {
     setDuration(audioRef.current.duration);
   };
 
-  const handleAudioEnded = () => {
-    nextTrack();
-  };
+  const handleAudioEnded = () => { nextTrack(); };
 
   const handleAudioCanPlay = () => {
     if (isPlaying && audioRef.current && audioRef.current.paused) {
-      audioRef.current.play().catch(err => {
-        console.warn('Play attempt inside onCanPlay failed:', err);
-      });
+      audioRef.current.play().catch(err => {});
     }
   };
 
-  const handleAudioError = (e: React.SyntheticEvent<<HTMLAudioElement, Event>) => {
+  const handleAudioError = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
     const err = e.currentTarget.error;
     console.error('HTML5 Audio error encountered:', err);
-    
     if (currentTrack) {
-      // 1. Recover from transient network/aborted errors (code 1 or 2) commonly triggered when locking/unlocking screen
       if (err && (err.code === 1 || err.code === 2)) {
-        console.log('Transient network/aborted error detected. Restoring position and resuming...');
         const savedProgress = progress;
-        
         setTimeout(() => {
           if (audioRef.current) {
             audioRef.current.load();
             audioRef.current.currentTime = savedProgress;
-            if (isPlaying) {
-              audioRef.current.play().catch(playErr => {
-                console.warn('Recover play failed:', playErr);
-              });
-            }
+            if (isPlaying) audioRef.current.play().catch(() => {});
           }
-        }, 1000); // Wait 1 second for OS/network state to stabilize
+        }, 1000);
         return;
       }
-
-      // 2. Fall back to secure proxy URL if direct CDN fails
       const token = (session?.user as any)?.id || '';
       const proxyUrl = `/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`;
-      
       if (streamUrl !== proxyUrl) {
-        console.log('Direct CDN stream failed. Falling back to secure proxy URL:', proxyUrl);
         setStreamUrl(proxyUrl);
-        
-        // Force reload and play from last progress
         const savedProgress = progress;
         setTimeout(() => {
           if (audioRef.current) {
             audioRef.current.load();
             audioRef.current.currentTime = savedProgress;
-            if (isPlaying) {
-              audioRef.current.play().catch(err => {
-                console.warn('Playback resume on fallback URL failed:', err);
-              });
-            }
+            if (isPlaying) audioRef.current.play().catch(() => {});
           }
         }, 50);
         return;
       }
     }
-    
-    if (isYouTubeTrack) {
-      setUseVideoFallback(true);
-    }
+    if (isYouTubeTrack) setUseVideoFallback(true);
   };
 
-  // Handle YouTube/Video Callbacks
   const handleVideoProgress = (state: { playedSeconds: number }) => {
     if (isSeeking) return;
     setProgress(state.playedSeconds);
   };
 
-  const handleVideoDuration = (dur: number) => {
-    setDuration(dur);
-  };
+  const handleVideoDuration = (dur: number) => { setDuration(dur); };
+  const handleVideoEnded = () => { nextTrack(); };
 
-  const handleVideoEnded = () => {
-    nextTrack();
-  };
-
-  // Unified Seek Slider actions
-  const handleSeekChange = (e: React.ChangeEvent<<HTMLInputElement>) => {
+  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setIsSeeking(true);
-    const value = parseFloat(e.target.value);
-    setProgress(value);
+    setProgress(parseFloat(e.target.value));
   };
 
-  const handleSeekEnd = (e: React.MouseEvent<<HTMLInputElement> | React.TouchEvent<<HTMLInputElement>) => {
+  const handleSeekEnd = (e: React.MouseEvent<HTMLInputElement> | React.TouchEvent<HTMLInputElement>) => {
     setIsSeeking(false);
-    const value = parseFloat((e.target as HTMLInputElement).value);
-    
-    seekTo(value);
+    seekTo(parseFloat((e.target as HTMLInputElement).value));
   };
 
-  // Toggle Mute Helper
   const toggleMute = () => {
     if (isMuted) {
       setIsMuted(false);
@@ -651,7 +513,6 @@ export default function MusicPlayer() {
     }
   };
 
-  // Format Time helper
   const formatTime = (time: number) => {
     if (isNaN(time)) return '0:00';
     const mins = Math.floor(time / 60);
@@ -661,7 +522,6 @@ export default function MusicPlayer() {
 
   return (
     <>
-      {/* HTML5 Audio Player (MP3s, Google Drive, local files, and YouTube stream-first playback) */}
       {!isVideoTrack && currentTrack && (
         <audio
           ref={audioRef}
@@ -675,18 +535,14 @@ export default function MusicPlayer() {
         />
       )}
 
-      {/* Background audio preloading tag for the next song in queue */}
       {nextTrackUrl && (
         <audio src={nextTrackUrl} preload="auto" muted style={{ display: 'none' }} />
       )}
 
-      {/* Invisible YouTube / Video player satisfying size and visibility rules */}
       {isVideoTrack && (
         <div className="fixed bottom-0 right-0 w-[200px] h-[200px] opacity-[0.001] pointer-events-none z-[-1] overflow-hidden">
           <ReactPlayer
-            onReady={(player: any) => {
-              ytPlayerRef.current = player;
-            }}
+            onReady={(player: any) => { ytPlayerRef.current = player; }}
             url={
               isYouTubeTrack
                 ? normalizeYouTubeUrl(currentTrack.sourceUrl)
@@ -704,15 +560,9 @@ export default function MusicPlayer() {
             config={{
               youtube: {
                 playerVars: {
-                  controls: 0,
-                  autoplay: 1,
-                  modestbranding: 1,
-                  rel: 0,
-                  showinfo: 0,
-                  iv_load_policy: 3,
-                  disablekb: 1,
-                  enablejsapi: 1,
-                  playsinline: 1
+                  controls: 0, autoplay: 1, modestbranding: 1,
+                  rel: 0, showinfo: 0, iv_load_policy: 3,
+                  disablekb: 1, enablejsapi: 1, playsinline: 1
                 },
               },
             }}
@@ -720,28 +570,20 @@ export default function MusicPlayer() {
         </div>
       )}
 
-      {/* Fullscreen Mobile Player Overlay */}
       {isExpanded && (
         <div className="fixed inset-0 bg-zinc-950/98 backdrop-blur-2xl z-50 md:hidden flex flex-col justify-between px-6 py-8 select-none text-white animate-slide-up">
-          
-          {/* Top Header bar */}
           <div className="flex items-center justify-between">
-            <button 
-              onClick={() => setIsExpanded(false)} 
-              className="p-2.5 bg-zinc-900/60 hover:bg-zinc-800 rounded-full border border-zinc-800/40"
-            >
+            <button onClick={() => setIsExpanded(false)} className="p-2.5 bg-zinc-900/60 hover:bg-zinc-800 rounded-full border border-zinc-800/40">
               <ChevronDown className="w-6 h-6 text-zinc-400" />
             </button>
             <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Now Playing</span>
-            <div className="w-11"></div> {/* Alignment spacer */}
+            <div className="w-11"></div>
           </div>
 
-          {/* Large Rotating Cover Disc replaced with VinylPlayer */}
           <div className="flex-1 flex flex-col items-center justify-center my-8 w-full overflow-hidden">
             <VinylPlayer currentTrack={currentTrack} isPlaying={isPlaying} />
           </div>
 
-          {/* Track Details */}
           <div className="space-y-1 mb-4">
             <div className="flex items-center justify-between">
               <div className="max-w-[80%]">
@@ -754,17 +596,10 @@ export default function MusicPlayer() {
             </div>
           </div>
 
-          {/* Mobile Seek Slider */}
           <div className="space-y-3 mb-6">
             <input
-              type="range"
-              min={0}
-              max={duration || 0}
-              step={0.1}
-              value={progress}
-              onChange={handleSeekChange}
-              onMouseUp={handleSeekEnd}
-              onTouchEnd={handleSeekEnd}
+              type="range" min={0} max={duration || 0} step={0.1} value={progress}
+              onChange={handleSeekChange} onMouseUp={handleSeekEnd} onTouchEnd={handleSeekEnd}
               className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-spotify-green focus:outline-none"
             />
             <div className="flex justify-between text-xs text-zinc-500 font-bold uppercase tracking-wider">
@@ -773,221 +608,101 @@ export default function MusicPlayer() {
             </div>
           </div>
 
-          {/* Expanded Playback Controls */}
           <div className="flex items-center justify-between px-2 mb-4">
-            <button 
-              onClick={() => setPlaybackMode(playbackMode === 'shuffle' ? 'normal' : 'shuffle')}
-              className={`p-3 transition-colors ${playbackMode === 'shuffle' ? 'text-spotify-green' : 'text-zinc-500'}`}
-            >
+            <button onClick={() => setPlaybackMode(playbackMode === 'shuffle' ? 'normal' : 'shuffle')}
+              className={`p-3 transition-colors ${playbackMode === 'shuffle' ? 'text-spotify-green' : 'text-zinc-500'}`}>
               <Shuffle className="w-5 h-5" />
             </button>
-
             <button onClick={prevTrack} className="p-3 text-zinc-300">
               <SkipBack className="w-7 h-7 fill-current" />
             </button>
-
-            <button 
-              onClick={togglePlay} 
-              className="w-16 h-16 bg-white rounded-full text-black flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-transform"
-            >
-              {isPlaying ? (
-                <Pause className="w-6 h-6 fill-black" />
-              ) : (
-                <Play className="w-6 h-6 fill-black ml-1" />
-              )}
+            <button onClick={togglePlay} className="w-16 h-16 bg-white rounded-full text-black flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-transform">
+              {isPlaying ? <Pause className="w-6 h-6 fill-black" /> : <Play className="w-6 h-6 fill-black ml-1" />}
             </button>
-
             <button onClick={nextTrack} className="p-3 text-zinc-300">
               <SkipForward className="w-7 h-7 fill-current" />
             </button>
-
-            <button 
-              onClick={() => setPlaybackMode(playbackMode === 'repeat' ? 'normal' : 'repeat')}
-              className={`p-3 transition-colors ${playbackMode === 'repeat' ? 'text-spotify-green' : 'text-zinc-500'}`}
-            >
+            <button onClick={() => setPlaybackMode(playbackMode === 'repeat' ? 'normal' : 'repeat')}
+              className={`p-3 transition-colors ${playbackMode === 'repeat' ? 'text-spotify-green' : 'text-zinc-500'}`}>
               <Repeat className="w-5 h-5" />
             </button>
           </div>
         </div>
       )}
 
-      {/* Bottom Control Bar Layout (Mini-player on mobile, standard on desktop) */}
-      <div 
+      <div
         onClick={() => setIsExpanded(true)}
         className="fixed bottom-14 md:bottom-0 left-0 right-0 h-20 md:h-24 bg-zinc-950/95 border-t border-zinc-900 px-4 md:px-6 flex items-center justify-between select-none z-30 backdrop-blur-lg cursor-pointer md:cursor-default"
       >
-        
-        {/* Thin progress bar visible only on mobile top-edge when collapsed */}
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-zinc-900 md:hidden">
-          <div 
-            className="bg-spotify-green h-full transition-all duration-300"
-            style={{ width: `${duration ? (progress / duration) * 100 : 0}%` }}
-          ></div>
+          <div className="bg-spotify-green h-full transition-all duration-300"
+            style={{ width: `${duration ? (progress / duration) * 100 : 0}%` }}></div>
         </div>
-        
-        {/* Left Side: Active Track Metadata */}
+
         <div className="flex items-center gap-2 md:gap-4 w-[60%] md:w-[30%] min-w-[140px] md:min-w-[180px]">
-          <div className="w-10 h-10 md:w-16 md:h-16 bg-zinc-900 rounded flex-shrink-0 flex items-center justify-center border border-zinc-800 overflow-hidden relative group">
-            {currentTrack.thumbnail ? (
-              <img src={currentTrack.thumbnail} alt={currentTrack.title} className="w-full h-full object-cover" />
-            ) : (
-              <Music className="w-5 h-5 text-zinc-500" />
-            )}
+          <div className="w-10 h-10 md:w-16 md:h-16 bg-zinc-900 rounded flex-shrink-0 flex items-center justify-center border border-zinc-800 overflow-hidden">
+            {currentTrack.thumbnail
+              ? <img src={currentTrack.thumbnail} alt={currentTrack.title} className="w-full h-full object-cover" />
+              : <Music className="w-5 h-5 text-zinc-500" />}
           </div>
           <div className="truncate flex-1">
-            <h4 className="text-xs md:text-sm font-bold text-white truncate hover:underline">{currentTrack.title}</h4>
-            <p className="text-[10px] md:text-xs text-zinc-400 truncate hover:underline">{currentTrack.artist}</p>
-            {/* Import status badge */}
+            <h4 className="text-xs md:text-sm font-bold text-white truncate">{currentTrack.title}</h4>
+            <p className="text-[10px] md:text-xs text-zinc-400 truncate">{currentTrack.artist}</p>
             {importStatus === 'pending' && (
-              <span className="text-[9px] text-amber-400 font-semibold tracking-wide animate-pulse">
-                ⏳ Saving to library…
-              </span>
+              <span className="text-[9px] text-amber-400 font-semibold tracking-wide animate-pulse">⏳ Saving to library…</span>
             )}
             {importStatus === 'failed' && (
-              <span className="text-[9px] text-red-400 font-semibold tracking-wide">
-                ⚠ Save failed — streaming live
-              </span>
+              <span className="text-[9px] text-red-400 font-semibold tracking-wide">⚠ Save failed — streaming live</span>
             )}
           </div>
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              // handle like toggle or just custom action
-            }}
-            className="text-zinc-400 hover:text-white transition-colors p-1"
-          >
+          <button onClick={(e) => e.stopPropagation()} className="text-zinc-400 hover:text-white transition-colors p-1">
             <Heart className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Center: Playback Core Controls & Seek Timeline */}
-        <div 
-          onClick={(e) => e.stopPropagation()}
-          className="flex flex-col items-center gap-1 md:gap-2 flex-1 max-w-2xl px-2 md:px-4"
-        >
-          
-          {/* Controls buttons row */}
+        <div onClick={(e) => e.stopPropagation()} className="flex flex-col items-center gap-1 md:gap-2 flex-1 max-w-2xl px-2 md:px-4">
           <div className="flex items-center gap-3 md:gap-5">
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                setPlaybackMode(playbackMode === 'shuffle' ? 'normal' : 'shuffle');
-              }}
-              className={`hover:text-white transition-colors hidden md:block ${playbackMode === 'shuffle' ? 'text-spotify-green' : 'text-zinc-400'}`}
-              title="Shuffle"
-            >
+            <button onClick={(e) => { e.stopPropagation(); setPlaybackMode(playbackMode === 'shuffle' ? 'normal' : 'shuffle'); }}
+              className={`hover:text-white transition-colors hidden md:block ${playbackMode === 'shuffle' ? 'text-spotify-green' : 'text-zinc-400'}`}>
               <Shuffle className="w-4 h-4" />
             </button>
-            
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                prevTrack();
-              }}
-              className="text-zinc-400 hover:text-white transition-colors p-1" 
-              title="Previous"
-            >
+            <button onClick={(e) => { e.stopPropagation(); prevTrack(); }} className="text-zinc-400 hover:text-white transition-colors p-1">
               <SkipBack className="w-5 h-5 fill-zinc-400 hover:fill-white" />
             </button>
-
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                togglePlay();
-              }}
-              className="bg-white hover:scale-105 p-2 md:p-3 rounded-full text-black transition-transform flex items-center justify-center"
-              title={isPlaying ? 'Pause' : 'Play'}
-            >
-              {isPlaying ? (
-                <Pause className="w-4.5 h-4.5 md:w-5 md:h-5 fill-black" />
-              ) : (
-                <Play className="w-4.5 h-4.5 md:w-5 md:h-5 fill-black ml-0.5" />
-              )}
+            <button onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+              className="bg-white hover:scale-105 p-2 md:p-3 rounded-full text-black transition-transform flex items-center justify-center">
+              {isPlaying
+                ? <Pause className="w-4 h-4 md:w-5 md:h-5 fill-black" />
+                : <Play className="w-4 h-4 md:w-5 md:h-5 fill-black ml-0.5" />}
             </button>
-
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                nextTrack();
-              }}
-              className="text-zinc-400 hover:text-white transition-colors p-1" 
-              title="Next"
-            >
+            <button onClick={(e) => { e.stopPropagation(); nextTrack(); }} className="text-zinc-400 hover:text-white transition-colors p-1">
               <SkipForward className="w-5 h-5 fill-zinc-400 hover:fill-white" />
             </button>
-
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                setPlaybackMode(playbackMode === 'repeat' ? 'normal' : 'repeat');
-              }}
-              className={`hover:text-white transition-colors hidden md:block ${playbackMode === 'repeat' ? 'text-spotify-green' : 'text-zinc-400'}`}
-              title="Repeat"
-            >
+            <button onClick={(e) => { e.stopPropagation(); setPlaybackMode(playbackMode === 'repeat' ? 'normal' : 'repeat'); }}
+              className={`hover:text-white transition-colors hidden md:block ${playbackMode === 'repeat' ? 'text-spotify-green' : 'text-zinc-400'}`}>
               <Repeat className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Progress Seek Slider */}
           <div className="w-full hidden md:flex items-center gap-3">
-            <span className="text-[10px] font-semibold text-zinc-400 w-8 text-right">
-              {formatTime(progress)}
-            </span>
-            
-            <input
-              type="range"
-              min={0}
-              max={duration || 0}
-              step={0.1}
-              value={progress}
-              onChange={handleSeekChange}
-              onMouseUp={handleSeekEnd}
-              onTouchEnd={handleSeekEnd}
-              className="flex-1 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-spotify-green hover:accent-spotify-green-hover transition-all focus:outline-none"
-            />
-            
-            <span className="text-[10px] font-semibold text-zinc-400 w-8">
-              {formatTime(duration)}
-            </span>
+            <span className="text-[10px] font-semibold text-zinc-400 w-8 text-right">{formatTime(progress)}</span>
+            <input type="range" min={0} max={duration || 0} step={0.1} value={progress}
+              onChange={handleSeekChange} onMouseUp={handleSeekEnd} onTouchEnd={handleSeekEnd}
+              className="flex-1 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-spotify-green focus:outline-none" />
+            <span className="text-[10px] font-semibold text-zinc-400 w-8">{formatTime(duration)}</span>
           </div>
-
         </div>
 
-        {/* Right Side: Volume Controls & PiP video toggles */}
-        <div 
-          onClick={(e) => e.stopPropagation()}
-          className="hidden md:flex items-center justify-end gap-3 w-[30%] min-w-[150px] text-zinc-400"
-        >
-
-          <button onClick={toggleMute} className="hover:text-white transition-colors" title="Mute/Unmute">
-            {isMuted || volume === 0 ? (
-              <VolumeX className="w-5 h-5 text-red-500" />
-            ) : (
-              <Volume2 className="w-5 h-5" />
-            )}
+        <div onClick={(e) => e.stopPropagation()} className="hidden md:flex items-center justify-end gap-3 w-[30%] min-w-[150px] text-zinc-400">
+          <button onClick={toggleMute} className="hover:text-white transition-colors">
+            {isMuted || volume === 0 ? <VolumeX className="w-5 h-5 text-red-500" /> : <Volume2 className="w-5 h-5" />}
           </button>
-          
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={isMuted ? 0 : volume}
-            onChange={(e) => {
-              const val = parseFloat(e.target.value);
-              setVolume(val);
-              if (val > 0) setIsMuted(false);
-            }}
-            className="w-24 h-1 bg-zinc-850 rounded-lg appearance-none cursor-pointer accent-spotify-green focus:outline-none"
-          />
+          <input type="range" min={0} max={1} step={0.01} value={isMuted ? 0 : volume}
+            onChange={(e) => { const val = parseFloat(e.target.value); setVolume(val); if (val > 0) setIsMuted(false); }}
+            className="w-24 h-1 bg-zinc-850 rounded-lg appearance-none cursor-pointer accent-spotify-green focus:outline-none" />
         </div>
-
       </div>
     </>
   );
-<<<<<<< HEAD
-}
-=======
 }
 
->>>>>>> 5e788170c2de14ac26b561a8ed1f25f49a39604d
