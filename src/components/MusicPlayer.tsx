@@ -28,6 +28,46 @@ import { getYouTubeAudioUrl, isNativeApp } from '../hooks/useYtDlp';
 // Dynamically import ReactPlayer with SSR disabled since it uses window/navigator APIs
 const ReactPlayer = dynamic(() => import('react-player'), { ssr: false }) as any;
 
+// ─── Browser Audio Cache (Cache API) ─────────────────────────────────────────
+// Saves audio blobs locally after first play — repeat plays are instant & offline.
+const AUDIO_CACHE_NAME = 'musy-fi-audio-v1';
+
+async function getCachedAudio(songId: string): Promise<string | null> {
+  try {
+    if (typeof caches === 'undefined') return null;
+    const cache = await caches.open(AUDIO_CACHE_NAME);
+    const response = await cache.match(`/audio-cache/${songId}`);
+    if (!response) return null;
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  } catch { return null; }
+}
+
+async function cacheAudio(songId: string, audioUrl: string): Promise<void> {
+  try {
+    if (typeof caches === 'undefined') return;
+    // Don't cache proxy URLs or blob URLs — only real fetchable URLs
+    if (audioUrl.startsWith('blob:') || audioUrl.includes('/api/songs/stream')) return;
+    const cache = await caches.open(AUDIO_CACHE_NAME);
+    const existing = await cache.match(`/audio-cache/${songId}`);
+    if (existing) return; // already cached
+    const res = await fetch(audioUrl, { signal: AbortSignal.timeout(30_000) });
+    if (res.ok) await cache.put(`/audio-cache/${songId}`, res);
+  } catch { /* non-fatal */ }
+}
+
+async function cacheAudioFromBlob(songId: string, blob: Blob): Promise<void> {
+  try {
+    if (typeof caches === 'undefined') return;
+    const cache = await caches.open(AUDIO_CACHE_NAME);
+    const existing = await cache.match(`/audio-cache/${songId}`);
+    if (existing) return;
+    await cache.put(`/audio-cache/${songId}`, new Response(blob, {
+      headers: { 'Content-Type': blob.type || 'audio/mpeg' }
+    }));
+  } catch { /* non-fatal */ }
+}
+
 export default function MusicPlayer() {
   const { data: session } = useSession();
   const {
@@ -55,6 +95,7 @@ export default function MusicPlayer() {
   const [isSeeking, setIsSeeking] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [useVideoFallback, setUseVideoFallback] = useState(false);
+  const [importStatus, setImportStatus] = useState<'ready'|'pending'|'failed'|null>(null);
 
   const [streamUrl, setStreamUrl] = useState<string>('');
   const [nextTrackUrl, setNextTrackUrl] = useState<string>('');
@@ -76,6 +117,38 @@ export default function MusicPlayer() {
       }
     };
   }, []);
+
+  // ── Import status polling ──────────────────────────────────────────────────
+  // Polls every 4s when a YouTube song is pending conversion to Google Drive.
+  useEffect(() => {
+    if (!currentTrack || currentTrack.type !== 'youtube') {
+      setImportStatus(null);
+      return;
+    }
+    setImportStatus('pending');
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/songs/import-status?id=${currentTrack.id}`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setImportStatus(data.importStatus);
+        if (data.importStatus === 'ready' && data.type === 'google') {
+          // Conversion done — update the track type in the player context so it
+          // switches to the Drive stream URL without the user having to reload.
+          // We just reload the stream URL to the new proxy.
+          const token = (session?.user as any)?.id || '';
+          setStreamUrl(`/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`);
+        }
+      } catch { /* non-fatal */ }
+    };
+
+    poll();
+    const interval = setInterval(poll, 4000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [currentTrack?.id]);
 
   // Synchronize stream URL
   useEffect(() => {
@@ -107,27 +180,33 @@ export default function MusicPlayer() {
     if (currentTrack.type === 'google') {
       if (accessToken) {
         console.log(`[MusicPlayer] Fetching Google Drive track "${currentTrack.title}" client-side...`);
-        const driveUrl = `https://www.googleapis.com/drive/v3/files/${currentTrack.sourceUrl}?alt=media`;
-        
-        fetch(driveUrl, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        })
-          .then(async (res) => {
-            if (!res.ok) {
-              throw new Error(`Google API returned status ${res.status}`);
-            }
-            const blob = await res.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            console.log(`[MusicPlayer] Client-side fetch success for "${currentTrack.title}". Playing from local Object URL.`);
-            activeBlobUrlRef.current = blobUrl;
-            setStreamUrl(blobUrl);
-          })
-          .catch((err) => {
-            console.warn('[MusicPlayer] Client-side Google Drive fetch failed, falling back to proxy stream:', err);
-            setStreamUrl(proxyUrl);
-          });
+
+        // Check browser cache first — instant playback on repeat
+        getCachedAudio(currentTrack.id).then(cachedUrl => {
+          if (cachedUrl) {
+            console.log(`[MusicPlayer] Cache hit for "${currentTrack.title}" — playing from local cache.`);
+            activeBlobUrlRef.current = cachedUrl;
+            setStreamUrl(cachedUrl);
+            return;
+          }
+
+          const driveUrl = `https://www.googleapis.com/drive/v3/files/${currentTrack.sourceUrl}?alt=media`;
+          fetch(driveUrl, { headers: { Authorization: `Bearer ${accessToken}` } })
+            .then(async (res) => {
+              if (!res.ok) throw new Error(`Google API returned status ${res.status}`);
+              const blob = await res.blob();
+              const blobUrl = URL.createObjectURL(blob);
+              console.log(`[MusicPlayer] Client-side fetch success for "${currentTrack.title}". Playing from local Object URL.`);
+              activeBlobUrlRef.current = blobUrl;
+              setStreamUrl(blobUrl);
+              // Save to browser cache for next time
+              cacheAudioFromBlob(currentTrack.id, blob);
+            })
+            .catch((err) => {
+              console.warn('[MusicPlayer] Client-side Google Drive fetch failed, falling back to proxy stream:', err);
+              setStreamUrl(proxyUrl);
+            });
+        });
       } else {
         // Fall back to direct public CDN link
         const publicUrl = `https://lh3.googleusercontent.com/d/${currentTrack.sourceUrl}`;
@@ -151,7 +230,48 @@ export default function MusicPlayer() {
         setStreamUrl(proxyUrl);
       }
     } else {
+<<<<<<< HEAD
       // Normal mp3 tracks use proxyUrl
+=======
+      // ── YouTube tracks: fetch direct URL, play from user's IP ──────────────
+      // The stream route now returns JSON { directUrl } instead of proxying bytes.
+      // The browser fetches audio directly from YouTube CDN using the user's own IP.
+      // This completely bypasses Render's blocked datacenter IP.
+      if (currentTrack.type === 'youtube') {
+        const token = (session?.user as any)?.id || '';
+        const resolveUrl = `/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`;
+
+        fetch(resolveUrl)
+          .then(async (res) => {
+            const contentType = res.headers.get('content-type') || '';
+
+            // New behaviour: server returns { directUrl } JSON
+            if (contentType.includes('application/json')) {
+              const data = await res.json();
+              if (data.directUrl) {
+                console.log(`[MusicPlayer] Got direct URL for "${currentTrack.title}" — browser fetching from user IP`);
+                setStreamUrl(data.directUrl);
+                lastLoadedTrackIdRef.current = currentTrack.id;
+                return;
+              }
+            }
+
+            // Fallback: old proxy behaviour (server returns audio stream directly)
+            console.warn('[MusicPlayer] Stream route returned audio stream (legacy proxy), using proxy URL');
+            setStreamUrl(resolveUrl);
+          })
+          .catch((err) => {
+            console.warn('[MusicPlayer] Failed to resolve YouTube direct URL:', err);
+            // Last resort: set the proxy URL and hope for the best
+            setStreamUrl(resolveUrl);
+          });
+
+        lastLoadedTrackIdRef.current = currentTrack.id;
+        return; // exit — setStreamUrl is called async above
+      }
+
+      // Normal mp3 / local tracks — use proxy stream as before
+>>>>>>> 5e788170c2de14ac26b561a8ed1f25f49a39604d
       setStreamUrl(proxyUrl);
     }
 
@@ -717,6 +837,17 @@ export default function MusicPlayer() {
           <div className="truncate flex-1">
             <h4 className="text-xs md:text-sm font-bold text-white truncate hover:underline">{currentTrack.title}</h4>
             <p className="text-[10px] md:text-xs text-zinc-400 truncate hover:underline">{currentTrack.artist}</p>
+            {/* Import status badge */}
+            {importStatus === 'pending' && (
+              <span className="text-[9px] text-amber-400 font-semibold tracking-wide animate-pulse">
+                ⏳ Saving to library…
+              </span>
+            )}
+            {importStatus === 'failed' && (
+              <span className="text-[9px] text-red-400 font-semibold tracking-wide">
+                ⚠ Save failed — streaming live
+              </span>
+            )}
           </div>
           <button 
             onClick={(e) => {
@@ -854,4 +985,9 @@ export default function MusicPlayer() {
       </div>
     </>
   );
+<<<<<<< HEAD
 }
+=======
+}
+
+>>>>>>> 5e788170c2de14ac26b561a8ed1f25f49a39604d

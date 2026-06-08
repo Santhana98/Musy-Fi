@@ -2,79 +2,144 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { saveAudioFile } from '@/lib/storage';
-import { resolveYoutubeMetadata, resolveYoutubeAudioStream } from '@/lib/youtubeResolver';
+import { Readable } from 'stream';
+import { resolveYoutubeMetadata } from '@/lib/youtubeResolver';
+import { getGoogleDriveClient, getOrCreateMusyFiFolder } from '@/lib/gdrive';
+import * as mm from 'music-metadata';
 
 export const maxDuration = 60;
 
-const MAX_BACKGROUND_IMPORT_SECONDS = 30 * 60;
+const MAX_IMPORT_SECONDS = 30 * 60; // 30 min
 
-// Helper to extract YouTube Video ID
 function getYoutubeId(url: string): string | null {
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = url.match(regExp);
-  return match && match[2].length === 11 ? match[2] : null;
+  const m = url.match(/^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
+  return m && m[2].length === 11 ? m[2] : null;
 }
 
-// Helper to extract Vimeo Video ID
 function getVimeoId(url: string): string | null {
-  const regExp = /(?:vimeo\.com\/)([0-9]+)/;
-  const match = url.match(regExp);
-  return match ? match[1] : null;
+  const m = url.match(/(?:vimeo\.com\/)([0-9]+)/);
+  return m ? m[1] : null;
+}
+
+// ─── Stream audio from Import API directly into Google Drive ──────────────────
+// No RAM buffer — data flows straight through.
+async function streamImportApiToDrive(
+  videoId: string,
+  title: string,
+  userId: string,
+  accessToken: string,
+  songId: string
+) {
+  const importApiUrl = process.env.IMPORT_API_URL?.replace(/\/$/, '');
+  if (!importApiUrl) throw new Error('IMPORT_API_URL not configured');
+
+  // Fetch the audio stream from our Import API
+  const streamRes = await fetch(
+    `${importApiUrl}/api/stream?url=${videoId}&format=m4a&quality=192`,
+    { signal: AbortSignal.timeout(120_000) }
+  );
+  if (!streamRes.ok || !streamRes.body) {
+    throw new Error(`Import API stream failed: ${streamRes.status}`);
+  }
+
+  // Pipe directly to Google Drive — no Buffer in RAM
+  const drive = await getGoogleDriveClient(userId, accessToken);
+  if (!drive) throw new Error('Google Drive not authenticated');
+
+  const folderId = await getOrCreateMusyFiFolder(drive);
+  const cleanTitle = title.replace(/[^a-zA-Z0-9.-]/g, '_');
+
+  // Convert Web ReadableStream → Node Readable for googleapis
+  const nodeStream = Readable.fromWeb(streamRes.body as any);
+
+  const uploadRes = await drive.files.create({
+    requestBody: { name: `${cleanTitle}.m4a`, parents: [folderId] },
+    media: { mimeType: 'audio/mp4', body: nodeStream },
+    fields: 'id',
+  });
+
+  if (!uploadRes.data.id) throw new Error('Drive upload returned no file ID');
+
+  // Make public for streaming
+  try {
+    await drive.permissions.create({
+      fileId: uploadRes.data.id,
+      requestBody: { role: 'reader', type: 'anyone' },
+    });
+  } catch (e) {
+    console.warn('[link] Failed to set Drive permissions:', e);
+  }
+
+  // Try to get duration from metadata
+  let duration = 0;
+  try {
+    const metaRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${uploadRes.data.id}?alt=media`,
+      { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(10_000) }
+    );
+    if (metaRes.ok) {
+      const buf = Buffer.from(await metaRes.arrayBuffer());
+      const meta = await mm.parseBuffer(buf, { mimeType: 'audio/mp4' });
+      duration = meta.format.duration || 0;
+    }
+  } catch (e) { /* non-fatal */ }
+
+  return { driveFileId: uploadRes.data.id, duration };
 }
 
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || !session.user || !(session.user as any).id) {
+    if (!session?.user || !(session.user as any).id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = (session.user as any).id;
-    const accessToken = (session.user as any).accessToken;
-    const body = await request.json();
-    const { url, title, artist } = body;
+    const userId      = (session.user as any).id as string;
+    const accessToken = (session.user as any).accessToken as string;
+    const { url, title, artist } = await request.json();
 
-    if (!url) {
-      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
-    }
+    if (!url) return NextResponse.json({ error: 'URL is required' }, { status: 400 });
 
-    let videoId = '';
-    let type = '';
-    let thumbnail = '';
-    let resolvedTitle = title || 'External Track';
-    let resolvedArtist = artist || 'Unknown Source';
-    let resolvedDuration = 0;
-
-    const ytId = getYoutubeId(url);
+    const ytId    = getYoutubeId(url);
     const vimeoId = getVimeoId(url);
 
+    // ── Resolve type ──────────────────────────────────────────────────────────
+    let videoId         = '';
+    let type            = '';
+    let thumbnail       = '';
+    let resolvedTitle   = title   || 'External Track';
+    let resolvedArtist  = artist  || 'Unknown Source';
+    let resolvedDuration = 0;
+
     if (ytId) {
-      videoId = ytId;
-      type = 'youtube';
+      videoId   = ytId;
+      type      = 'youtube';
       thumbnail = `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
-      
-      // Try to fetch real YouTube metadata via public APIs
+
       try {
-        const metadata = await resolveYoutubeMetadata(url);
-        resolvedTitle = title || metadata.title || `YouTube Track (${ytId})`;
-        resolvedArtist = artist || metadata.artist || 'YouTube';
-        resolvedDuration = metadata.duration || 0;
-      } catch (err) {
-        console.warn('Could not fetch YouTube info via yt-dlp, falling back to defaults:', err);
-        if (!title) resolvedTitle = `YouTube Track (${ytId})`;
+        const meta = await resolveYoutubeMetadata(url);
+        resolvedTitle    = title  || meta.title    || `YouTube Track (${ytId})`;
+        resolvedArtist   = artist || meta.artist   || 'YouTube';
+        resolvedDuration = meta.duration || 0;
+        if (meta.thumbnail) thumbnail = meta.thumbnail;
+      } catch (e) {
+        console.warn('[link] Metadata fetch failed:', e);
+        if (!title)  resolvedTitle  = `YouTube Track (${ytId})`;
         if (!artist) resolvedArtist = 'YouTube';
       }
+
+      if (resolvedDuration > MAX_IMPORT_SECONDS) {
+        return NextResponse.json(
+          { error: `Track is too long (${Math.round(resolvedDuration / 60)} min). Max is ${MAX_IMPORT_SECONDS / 60} min.` },
+          { status: 400 }
+        );
+      }
     } else if (vimeoId) {
-      videoId = vimeoId;
-      type = 'vimeo';
+      videoId   = vimeoId;
+      type      = 'vimeo';
       thumbnail = `https://vumbnail.com/${vimeoId}.jpg`;
-      if (!title) {
-        resolvedTitle = `Vimeo Track (${vimeoId})`;
-      }
-      if (!artist) {
-        resolvedArtist = 'Vimeo';
-      }
+      resolvedTitle  = title  || `Vimeo Track (${vimeoId})`;
+      resolvedArtist = artist || 'Vimeo';
     } else {
       return NextResponse.json(
         { error: 'Invalid URL. Only YouTube and Vimeo links are supported.' },
@@ -82,84 +147,71 @@ export async function POST(request: Request) {
       );
     }
 
-    if (type === 'youtube') {
-      if (resolvedDuration > MAX_BACKGROUND_IMPORT_SECONDS) {
-        return NextResponse.json(
-          { error: `Track duration (${resolvedDuration}s) exceeds the maximum allowed import length of ${MAX_BACKGROUND_IMPORT_SECONDS / 60} minutes.` },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Save to DB IMMEDIATELY as YouTube/Vimeo type to allow instant library playback
+    // ── Save to DB immediately (importStatus = "pending" for YouTube) ─────────
     const song = await prisma.song.create({
       data: {
-        title: resolvedTitle,
-        artist: resolvedArtist,
-        type: type, // "youtube" or "vimeo" initially
-        sourceUrl: videoId,
+        title:        resolvedTitle,
+        artist:       resolvedArtist,
+        type,
+        sourceUrl:    videoId,
         thumbnail,
-        duration: resolvedDuration,
+        duration:     resolvedDuration,
         userId,
+        importStatus: type === 'youtube' ? 'pending' : 'ready',
       },
     });
-    console.log('Library Entry Created Instantly');
 
-    // If it's YouTube, kick off background import to convert it to a real audio file
+    console.log(`[link] Song created instantly: ${song.id} (${resolvedTitle})`);
+
+    // ── Background conversion for YouTube (fire & forget) ────────────────────
     if (type === 'youtube') {
-      const runBackgroundImport = async () => {
+      (async () => {
         try {
-          console.log(`Background Conversion Started for song ${song.id}`);
-          const stream = await resolveYoutubeAudioStream(url);
-          const chunks: Buffer[] = [];
-          for await (const chunk of stream) {
-            chunks.push(Buffer.from(chunk));
-          }
-          const buffer = Buffer.concat(chunks);
-          
-          if (buffer.length === 0) {
-            throw new Error('Downloaded audio buffer is empty');
-          }
-          console.log(`Background Conversion Completed for song ${song.id}`);
+          console.log(`[link] Background import started for ${song.id}`);
 
-          console.log(`Background Drive Upload Started for song ${song.id}`);
-          // Determine a clean file name
-          const cleanTitle = resolvedTitle.replace(/[^a-zA-Z0-9.-]/g, '_');
-          const uploadResult = await saveAudioFile(
+          const { driveFileId, duration } = await streamImportApiToDrive(
+            videoId,
+            resolvedTitle,
             userId,
-            `${cleanTitle}.m4a`,
-            buffer,
-            'audio/mp4',
-            accessToken
+            accessToken,
+            song.id
           );
 
-          if (uploadResult.storageType === 'google') {
-            console.log(`Background Drive Upload Completed for song ${song.id}. Updating DB...`);
+          await prisma.song.update({
+            where: { id: song.id },
+            data: {
+              type:         'google',
+              sourceUrl:    driveFileId,
+              duration:     duration || resolvedDuration,
+              importStatus: 'ready',
+              importedAt:   new Date(),
+              importError:  null,
+            },
+          });
+
+          console.log(`[link] Background import complete for ${song.id} → Drive: ${driveFileId}`);
+        } catch (err: any) {
+          console.error(`[link] Background import failed for ${song.id}:`, err.message);
+
+          // Mark as failed — song stays as "youtube" type (still plays live)
+          try {
             await prisma.song.update({
               where: { id: song.id },
               data: {
-                type: uploadResult.storageType,
-                sourceUrl: uploadResult.sourceUrl,
-                duration: uploadResult.metadata?.duration || resolvedDuration
-              }
+                importStatus: 'failed',
+                importError:  err.message?.slice(0, 500) || 'Unknown error',
+              },
             });
-            console.log(`Background Import Fully Completed for song ${song.id}`);
-          } else {
-            throw new Error('Upload to Google Drive failed (fell back to local storage).');
+          } catch (dbErr) {
+            console.error('[link] Failed to update importStatus to failed:', dbErr);
           }
-        } catch (importErr: any) {
-          console.error(`Background import failed for song ${song.id}:`, importErr.message || importErr);
-          // If it fails, it simply remains a 'youtube' type song, which plays perfectly fine!
         }
-      };
-
-      // Fire and forget - DO NOT AWAIT
-      runBackgroundImport().catch(console.error);
+      })().catch(console.error);
     }
 
     return NextResponse.json({ success: true, song, backgroundReady: false });
   } catch (error: any) {
-    console.error('Error in link route:', error);
+    console.error('[link] Error:', error);
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
