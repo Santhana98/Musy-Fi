@@ -1,9 +1,11 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  outputFileTracingIncludes: {
-    '/api/**/*': ['./bin/**/*'],
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  images: {
+    domains: ['i.ytimg.com', 'img.youtube.com', 'lh3.googleusercontent.com'],
+  },
+  experimental: {
+    serverComponentsExternalPackages: ['youtubei.js'],
   },
 };
 
-export default nextConfig;
+module.exports = nextConfig;
