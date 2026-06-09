@@ -1,84 +1,72 @@
-import { NextAuthOptions } from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
-import GoogleProvider from "next-auth/providers/google";
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import prisma from "./prisma";
-import { verifyPassword } from "./crypto";
+## File 5 of 14 — `src/lib/auth.ts`
+
+1. From repo homepage, click **`src`** → **`lib`** → **`auth.ts`**
+2. Click **pencil ✏️**
+3. **Ctrl+A** → **Delete**
+4. Paste this:
+
+```typescript
+import { NextAuthOptions } from 'next-auth';
+import { PrismaAdapter } from '@next-auth/prisma-adapter';
+import GoogleProvider from 'next-auth/providers/google';
+import CredentialsProvider from 'next-auth/providers/credentials';
+import bcrypt from 'bcryptjs';
+import { prisma } from './prisma';
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
-  session: {
-    strategy: "jwt",
-  },
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || "MOCK_CLIENT_ID",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "MOCK_CLIENT_SECRET",
-      authorization: {
-        params: {
-          scope: "openid email profile https://www.googleapis.com/auth/drive.file",
-          access_type: "offline",
-          prompt: "consent",
-        },
-      },
-      allowDangerousEmailAccountLinking: true,
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
     CredentialsProvider({
-      name: "Credentials",
+      name: 'Email',
       credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+        name: { label: 'Name', type: 'text' },
+        isSignup: { label: 'isSignup', type: 'text' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("Please enter your email and password");
+        if (!credentials?.email || !credentials?.password) return null;
+
+        if (credentials.isSignup === 'true') {
+          const existing = await prisma.user.findUnique({ where: { email: credentials.email } });
+          if (existing) throw new Error('Email already registered');
+          const hashed = await bcrypt.hash(credentials.password, 10);
+          const user = await prisma.user.create({
+            data: { email: credentials.email, name: credentials.name || 'User', password: hashed },
+          });
+          return { id: user.id, email: user.email, name: user.name };
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-        });
-
-        if (!user || !user.password) {
-          throw new Error("No user found with this email. Please sign up.");
-        }
-
-        const isValid = verifyPassword(credentials.password, user.password);
-
-        if (!isValid) {
-          throw new Error("Invalid password");
-        }
-
-        return {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          image: user.image,
-        };
+        const user = await prisma.user.findUnique({ where: { email: credentials.email } });
+        if (!user?.password) throw new Error('No account found');
+        const valid = await bcrypt.compare(credentials.password, user.password);
+        if (!valid) throw new Error('Wrong password');
+        return { id: user.id, email: user.email, name: user.name };
       },
     }),
   ],
+  session: { strategy: 'jwt' },
   callbacks: {
-    async jwt({ token, user, account }) {
-      if (user) {
-        token.id = user.id;
-        token.theme = (user as any).theme;
-      }
-      if (account && account.provider === "google") {
-        token.accessToken = account.access_token;
-      }
+    async jwt({ token, user }) {
+      if (user) token.id = user.id;
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
-        (session.user as any).id = token.id as string;
-        (session.user as any).accessToken = token.accessToken as string;
-        (session.user as any).theme = token.theme as string;
-      }
+      if (session.user) (session.user as any).id = token.id;
       return session;
     },
   },
-  pages: {
-    signIn: "/login",
-  },
-  secret: process.env.NEXTAUTH_SECRET || "musifi-super-secret-key-12345",
+  pages: { signIn: '/login' },
+  secret: process.env.NEXTAUTH_SECRET,
 };
+```
+
+5. Click **Commit changes** → **Commit changes**
+
+---
+
+**Done? Tell me and I'll give you File 6!** ✅;
