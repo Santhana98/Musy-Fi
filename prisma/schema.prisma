@@ -56,14 +56,26 @@ model VerificationToken {
 }
 
 model Song {
-  id         String   @id @default(cuid())
-  userId     String
-  title      String
-  artist     String?
-  thumbnail  String?
-  youtubeUrl String
-  videoId    String
-  duration   Int?
-  addedAt    DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String        @id @default(cuid())
+  userId       String
+  title        String
+  artist       String?
+  thumbnail    String?
+  youtubeUrl   String
+  videoId      String
+  duration     Int?
+  liked        Boolean       @default(false)
+  playCount    Int           @default(0)
+  lastPlayedAt DateTime?
+  importStatus ImportStatus  @default(pending)
+  driveFileId  String?
+  addedAt      DateTime      @default(now())
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum ImportStatus {
+  pending
+  processing
+  ready
+  failed
 }
