@@ -1,11 +1,3 @@
-## File 5 of 14 — `src/lib/auth.ts`
-
-1. From repo homepage, click **`src`** → **`lib`** → **`auth.ts`**
-2. Click **pencil ✏️**
-3. **Ctrl+A** → **Delete**
-4. Paste this:
-
-```typescript
 import { NextAuthOptions } from 'next-auth';
 import { PrismaAdapter } from '@next-auth/prisma-adapter';
 import GoogleProvider from 'next-auth/providers/google';
@@ -63,10 +55,3 @@ export const authOptions: NextAuthOptions = {
   pages: { signIn: '/login' },
   secret: process.env.NEXTAUTH_SECRET,
 };
-```
-
-5. Click **Commit changes** → **Commit changes**
-
----
-
-**Done? Tell me and I'll give you File 6!** ✅;
