@@ -1,47 +1,17 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import Providers from "@/components/Providers";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import type { Metadata } from 'next';
+import './globals.css';
+import { Providers } from './providers';
 
 export const metadata: Metadata = {
-  title: "Musy-Fi - Personal Cloud Music Library & Playlist Manager",
-  description: "Organize and stream your personal music library directly from your own Google Drive storage and embed YouTube video tracks seamlessly, completely ad-free.",
-  manifest: "/manifest.json",
-  appleWebApp: {
-    capable: true,
-    title: "Musy-Fi",
-    statusBarStyle: "black-translucent",
-  },
-  icons: {
-    apple: "/logo-192.png",
-  },
+  title: 'Musy-Fi',
+  description: 'Your personal YouTube music library',
+  themeColor: '#0a0a0a',
 };
 
-export const viewport = {
-  themeColor: "#070708",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="h-full bg-bg-base text-foreground flex flex-col">
+    <html lang="en">
+      <body>
         <Providers>{children}</Providers>
       </body>
     </html>
