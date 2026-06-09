@@ -1,30 +1,15 @@
 {
-  "name": "Musy-Fi Cloud Music Library",
+  "name": "Musy-Fi",
   "short_name": "Musy-Fi",
-  "description": "Personal Cloud Music Player & Playlist Manager with YouTube Embeds",
+  "description": "Your personal YouTube music library",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#070708",
-  "theme_color": "#070708",
-  "orientation": "any",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "orientation": "portrait",
   "icons": [
-    {
-      "src": "/logo-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/logo-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/logo-maskable.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
+    { "src": "/logo-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/logo-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/logo-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
