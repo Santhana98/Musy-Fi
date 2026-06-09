@@ -1,29 +1,24 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
 model User {
-  id               String      @id @default(cuid())
-  name             String?
-  email            String?     @unique
-  emailVerified    DateTime?
-  image            String?
-  password         String?
-  theme            String?
-  resetToken       String?     @unique
-  resetTokenExpiry DateTime?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
-  accounts         Account[]
-  sessions         Session[]
-  playlists        Playlist[]
-  songs            Song[]
-  likedSongs       LikedSong[]
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  accounts      Account[]
+  sessions      Session[]
+  songs         Song[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model Account {
@@ -40,6 +35,7 @@ model Account {
   id_token          String?
   session_state     String?
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([provider, providerAccountId])
 }
 
@@ -55,58 +51,19 @@ model VerificationToken {
   identifier String
   token      String   @unique
   expires    DateTime
+
   @@unique([identifier, token])
 }
 
 model Song {
-  id            String         @id @default(cuid())
-  title         String
-  artist        String         @default("Unknown Artist")
-  type          String         // "mp3" | "google" | "youtube" | "vimeo"
-  sourceUrl     String
-  duration      Float          @default(0)
-  thumbnail     String?
-  // ── NEW: import pipeline status ──────────────────────────────
-  importStatus  String         @default("ready")
-  // "ready"   → playable now (mp3 upload, or youtube live stream)
-  // "pending" → background conversion to Google Drive in progress
-  // "failed"  → conversion failed, stays as youtube fallback
-  importError   String?        // last error message if importStatus = "failed"
-  importedAt    DateTime?      // set when conversion completes
-  userId        String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
-  playlistSongs PlaylistSong[]
-  likedBy       LikedSong[]
-}
-
-model Playlist {
-  id          String         @id @default(cuid())
-  name        String
-  description String?
-  coverImage  String?
-  userId      String
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  songs       PlaylistSong[]
-}
-
-model PlaylistSong {
-  playlistId String
-  songId     String
-  position   Int
-  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
-  song       Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
-  @@id([playlistId, songId])
-}
-
-model LikedSong {
-  userId    String
-  songId    String
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  song      Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
-  @@id([userId, songId])
+  id         String   @id @default(cuid())
+  userId     String
+  title      String
+  artist     String?
+  thumbnail  String?
+  youtubeUrl String
+  videoId    String
+  duration   Int?
+  addedAt    DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
