@@ -1,705 +1,282 @@
 'use client';
+import { useEffect, useRef, useState } from 'react';
+import { Song } from '@/app/page';
 
-import React, { useEffect, useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
-import { usePlayer, Song } from '@/context/PlayerContext';
-import { useSession } from 'next-auth/react';
-import { 
-  Play, 
-  Pause, 
-  SkipForward, 
-  SkipBack, 
-  Shuffle, 
-  Repeat, 
-  Volume2, 
-  VolumeX, 
-  Maximize2, 
-  Minimize2, 
-  Heart,
-  Music,
-  Tv,
-  ChevronDown,
-  Disc
-} from 'lucide-react';
+interface Props {
+  song: Song;
+  isPlaying: boolean;
+  setIsPlaying: (v: boolean) => void;
+  queue: Song[];
+  currentIndex: number;
+  onSongChange: (song: Song) => void;
+}
 
-import VinylPlayer from './VinylPlayer';
+const CACHE_NAME = 'musyfi-audio-v1';
 
-// Dynamically import ReactPlayer with SSR disabled since it uses window/navigator APIs
-const ReactPlayer = dynamic(() => import('react-player'), { ssr: false }) as any;
-
-// ─── Browser Audio Cache (Cache API) ─────────────────────────────────────────
-// Saves audio blobs locally after first play — repeat plays are instant & offline.
-const AUDIO_CACHE_NAME = 'musy-fi-audio-v1';
-
-async function getCachedAudio(songId: string): Promise<string | null> {
+async function getCached(videoId: string): Promise<string | null> {
   try {
     if (typeof caches === 'undefined') return null;
-    const cache = await caches.open(AUDIO_CACHE_NAME);
-    const response = await cache.match(`/audio-cache/${songId}`);
-    if (!response) return null;
-    const blob = await response.blob();
-    return URL.createObjectURL(blob);
+    const cache = await caches.open(CACHE_NAME);
+    const res = await cache.match(`/audio/${videoId}`);
+    if (!res) return null;
+    return URL.createObjectURL(await res.blob());
   } catch { return null; }
 }
 
-async function cacheAudio(songId: string, audioUrl: string): Promise<void> {
+async function saveToCache(videoId: string, url: string) {
   try {
     if (typeof caches === 'undefined') return;
-    // Don't cache proxy URLs or blob URLs — only real fetchable URLs
-    if (audioUrl.startsWith('blob:') || audioUrl.includes('/api/songs/stream')) return;
-    const cache = await caches.open(AUDIO_CACHE_NAME);
-    const existing = await cache.match(`/audio-cache/${songId}`);
-    if (existing) return; // already cached
-    const res = await fetch(audioUrl, { signal: AbortSignal.timeout(30_000) });
-    if (res.ok) await cache.put(`/audio-cache/${songId}`, res);
-  } catch { /* non-fatal */ }
-}
-
-async function cacheAudioFromBlob(songId: string, blob: Blob): Promise<void> {
-  try {
-    if (typeof caches === 'undefined') return;
-    const cache = await caches.open(AUDIO_CACHE_NAME);
-    const existing = await cache.match(`/audio-cache/${songId}`);
+    const cache = await caches.open(CACHE_NAME);
+    const existing = await cache.match(`/audio/${videoId}`);
     if (existing) return;
-    await cache.put(`/audio-cache/${songId}`, new Response(blob, {
-      headers: { 'Content-Type': blob.type || 'audio/mpeg' }
-    }));
-  } catch { /* non-fatal */ }
+    const res = await fetch(url, { signal: AbortSignal.timeout(60000) });
+    if (res.ok) await cache.put(`/audio/${videoId}`, res.clone());
+  } catch { }
 }
 
-export default function MusicPlayer() {
-  const { data: session } = useSession();
-  const {
-    currentTrack,
-    isPlaying,
-    setPlaying,
-    togglePlay,
-    volume,
-    setVolume,
-    progress,
-    setProgress,
-    duration,
-    setDuration,
-    playbackMode,
-    setPlaybackMode,
-    nextTrack,
-    prevTrack,
-    trackRestartTrigger,
-    queue,
-    currentIndex,
-  } = usePlayer();
-
-  const [isMuted, setIsMuted] = useState(false);
-  const [prevVolume, setPrevVolume] = useState(volume);
+export default function MusicPlayer({ song, isPlaying, setIsPlaying, queue, currentIndex, onSongChange }: Props) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [muted, setMuted] = useState(false);
   const [isSeeking, setIsSeeking] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [useVideoFallback, setUseVideoFallback] = useState(false);
-  const [importStatus, setImportStatus] = useState<'ready'|'pending'|'failed'|null>(null);
+  const [streamUrl, setStreamUrl] = useState('');
+  const [loadingUrl, setLoadingUrl] = useState(false);
+  const [cacheStatus, setCacheStatus] = useState<'none' | 'caching' | 'cached'>('none');
+  const lastVideoIdRef = useRef('');
 
-  const [streamUrl, setStreamUrl] = useState<string>('');
-  const [nextTrackUrl, setNextTrackUrl] = useState<string>('');
-
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const ytPlayerRef = useRef<any>(null);
-  const lastLoadedTrackIdRef = useRef<string>('');
-  const activeBlobUrlRef = useRef<string>('');
-  const nextBlobUrlRef = useRef<string>('');
-
-  // Cleanup Object URLs on unmount
   useEffect(() => {
-    return () => {
-      if (activeBlobUrlRef.current) {
-        URL.revokeObjectURL(activeBlobUrlRef.current);
-      }
-      if (nextBlobUrlRef.current) {
-        URL.revokeObjectURL(nextBlobUrlRef.current);
-      }
-    };
-  }, []);
+    if (!song || lastVideoIdRef.current === song.videoId) return;
+    lastVideoIdRef.current = song.videoId;
+    setProgress(0);
+    setDuration(0);
+    setLoadingUrl(true);
+    setCacheStatus('none');
 
-  // ── Import status polling ──────────────────────────────────────────────────
-  useEffect(() => {
-    if (!currentTrack || currentTrack.type !== 'youtube') {
-      setImportStatus(null);
-      return;
-    }
-    setImportStatus('pending');
-    let cancelled = false;
-
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/songs/import-status?id=${currentTrack.id}`);
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
-        if (cancelled) return;
-        setImportStatus(data.importStatus);
-        if (data.importStatus === 'ready' && data.type === 'google') {
-          const token = (session?.user as any)?.id || '';
-          setStreamUrl(`/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`);
-        }
-      } catch { /* non-fatal */ }
-    };
-
-    poll();
-    const interval = setInterval(poll, 4000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [currentTrack?.id]);
-
-  // Synchronize stream URL
-  useEffect(() => {
-    if (!currentTrack) {
-      setStreamUrl('');
-      lastLoadedTrackIdRef.current = '';
-      if (activeBlobUrlRef.current) {
-        URL.revokeObjectURL(activeBlobUrlRef.current);
-        activeBlobUrlRef.current = '';
-      }
-      return;
-    }
-    
-    if (lastLoadedTrackIdRef.current === currentTrack.id && streamUrl) {
-      return;
-    }
-
-    if (activeBlobUrlRef.current) {
-      URL.revokeObjectURL(activeBlobUrlRef.current);
-      activeBlobUrlRef.current = '';
-    }
-
-    const token = (session?.user as any)?.id || '';
-    const accessToken = (session?.user as any)?.accessToken || '';
-    const proxyUrl = `/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`;
-
-    if (currentTrack.type === 'google') {
-      if (accessToken) {
-        getCachedAudio(currentTrack.id).then(cachedUrl => {
-          if (cachedUrl) {
-            activeBlobUrlRef.current = cachedUrl;
-            setStreamUrl(cachedUrl);
-            return;
-          }
-
-          const driveUrl = `https://www.googleapis.com/drive/v3/files/${currentTrack.sourceUrl}?alt=media`;
-          fetch(driveUrl, { headers: { Authorization: `Bearer ${accessToken}` } })
-            .then(async (res) => {
-              if (!res.ok) throw new Error(`Google API returned status ${res.status}`);
-              const blob = await res.blob();
-              const blobUrl = URL.createObjectURL(blob);
-              activeBlobUrlRef.current = blobUrl;
-              setStreamUrl(blobUrl);
-              cacheAudioFromBlob(currentTrack.id, blob);
-            })
-            .catch((err) => {
-              console.warn('[MusicPlayer] Client-side Google Drive fetch failed, falling back to proxy stream:', err);
-              setStreamUrl(proxyUrl);
-            });
-        });
-      } else {
-        const publicUrl = `https://lh3.googleusercontent.com/d/${currentTrack.sourceUrl}`;
-        setStreamUrl(publicUrl);
-      }
-    } else {
-      if (currentTrack.type === 'youtube') {
-        const token = (session?.user as any)?.id || '';
-        const resolveUrl = `/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`;
-
-        fetch(resolveUrl)
-          .then(async (res) => {
-            const contentType = res.headers.get('content-type') || '';
-            if (contentType.includes('application/json')) {
-              const data = await res.json();
-              if (data.directUrl) {
-                setStreamUrl(data.directUrl);
-                lastLoadedTrackIdRef.current = currentTrack.id;
-                return;
-              }
-            }
-            setStreamUrl(resolveUrl);
-          })
-          .catch((err) => {
-            console.warn('[MusicPlayer] Failed to resolve YouTube direct URL:', err);
-            setStreamUrl(resolveUrl);
-          });
-
-        lastLoadedTrackIdRef.current = currentTrack.id;
+    (async () => {
+      const cached = await getCached(song.videoId);
+      if (cached) {
+        setStreamUrl(cached);
+        setLoadingUrl(false);
+        setCacheStatus('cached');
         return;
       }
-
-      setStreamUrl(proxyUrl);
-    }
-
-    lastLoadedTrackIdRef.current = currentTrack.id;
-  }, [currentTrack, session, streamUrl]);
-
-  // Synchronize next track preloading URL
-  useEffect(() => {
-    if (queue.length === 0 || currentIndex === -1) {
-      setNextTrackUrl('');
-      if (nextBlobUrlRef.current) {
-        URL.revokeObjectURL(nextBlobUrlRef.current);
-        nextBlobUrlRef.current = '';
-      }
-      return;
-    }
-    const nextIdx = currentIndex + 1;
-    if (nextIdx < queue.length) {
-      const nextTrackObj = queue[nextIdx];
-      const token = (session?.user as any)?.id || '';
-      const accessToken = (session?.user as any)?.accessToken || '';
-      
-      if (nextBlobUrlRef.current) {
-        URL.revokeObjectURL(nextBlobUrlRef.current);
-        nextBlobUrlRef.current = '';
-      }
-
-      if (nextTrackObj.type === 'google') {
-        if (accessToken) {
-          const driveUrl = `https://www.googleapis.com/drive/v3/files/${nextTrackObj.sourceUrl}?alt=media`;
-          fetch(driveUrl, { headers: { Authorization: `Bearer ${accessToken}` } })
-            .then(async (res) => {
-              if (!res.ok) throw new Error(`Google API returned status ${res.status}`);
-              const blob = await res.blob();
-              const blobUrl = URL.createObjectURL(blob);
-              nextBlobUrlRef.current = blobUrl;
-              setNextTrackUrl(blobUrl);
-            })
-            .catch((err) => {
-              console.warn('[MusicPlayer] Client-side preload fetch failed:', err);
-              setNextTrackUrl(`/api/songs/stream?id=${nextTrackObj.id}${token ? `&token=${token}` : ''}`);
-            });
-        } else {
-          setNextTrackUrl(`https://lh3.googleusercontent.com/d/${nextTrackObj.sourceUrl}`);
+      try {
+        const res = await fetch(`/api/songs/stream?videoId=${song.videoId}`);
+        const data = await res.json();
+        if (data.directUrl) {
+          setStreamUrl(data.directUrl);
+          setLoadingUrl(false);
+          setCacheStatus('caching');
+          saveToCache(song.videoId, data.directUrl).then(() => setCacheStatus('cached'));
         }
-      } else if (nextTrackObj.type === 'mp3') {
-        setNextTrackUrl(`/api/songs/stream?id=${nextTrackObj.id}${token ? `&token=${token}` : ''}`);
-      } else {
-        setNextTrackUrl('');
+      } catch (e) {
+        setLoadingUrl(false);
       }
-    } else {
-      setNextTrackUrl('');
-      if (nextBlobUrlRef.current) {
-        URL.revokeObjectURL(nextBlobUrlRef.current);
-        nextBlobUrlRef.current = '';
-      }
-    }
-  }, [queue, currentIndex, session]);
-
-  const isYouTubeTrack = currentTrack?.type === 'youtube';
-  const isVimeoTrack = currentTrack?.type === 'vimeo';
-  const isVideoTrack = isVimeoTrack || (isYouTubeTrack && useVideoFallback);
-
-  const normalizeYouTubeUrl = (sourceUrl: string) => {
-    if (/^[a-zA-Z0-9_-]{11}$/.test(sourceUrl)) {
-      return `https://www.youtube.com/watch?v=${sourceUrl}`;
-    }
-    try {
-      const url = new URL(sourceUrl);
-      const videoId =
-        url.searchParams.get('v') ||
-        url.pathname.match(/\/(?:embed|shorts)\/([a-zA-Z0-9_-]{11})/)?.[1] ||
-        (url.hostname.includes('youtu.be') ? url.pathname.split('/').filter(Boolean)[0] : null);
-      return videoId ? `https://www.youtube.com/watch?v=${videoId}` : sourceUrl;
-    } catch {
-      return sourceUrl;
-    }
-  };
-
-  const seekTo = (seconds: number) => {
-    if (isVideoTrack && ytPlayerRef.current) {
-      ytPlayerRef.current.seekTo(seconds, 'seconds');
-    } else if (audioRef.current) {
-      audioRef.current.currentTime = seconds;
-    }
-    setProgress(seconds);
-  };
+    })();
+  }, [song?.videoId]);
 
   useEffect(() => {
-    setUseVideoFallback(false);
-  }, [currentTrack?.id]);
+    if (!audioRef.current || !streamUrl) return;
+    if (isPlaying) audioRef.current.play().catch(() => {});
+    else audioRef.current.pause();
+  }, [isPlaying, streamUrl]);
 
   useEffect(() => {
-    if (!audioRef.current || isVideoTrack || !currentTrack) return;
-    try {
-      audioRef.current.load();
-    } catch (err) {
-      console.warn('Audio element load failed:', err);
-    }
-    if (isPlaying) {
-      audioRef.current.play().catch(err => {
-        console.warn('Initial play on track change interrupted:', err);
-      });
-    }
-  }, [currentTrack?.id, isVideoTrack]);
+    if (audioRef.current) audioRef.current.volume = muted ? 0 : volume;
+  }, [volume, muted]);
 
   useEffect(() => {
-    if (!audioRef.current || isVideoTrack || !currentTrack) return;
-    if (isPlaying) {
-      if (audioRef.current.paused) {
-        audioRef.current.play().catch(err => {
-          console.warn('Play trigger interrupted:', err);
-        });
-      }
-    } else {
-      if (!audioRef.current.paused) {
-        audioRef.current.pause();
-      }
-    }
-  }, [isPlaying, isVideoTrack, currentTrack]);
-
-  useEffect(() => {
-    const currentVol = isMuted ? 0 : volume;
-    if (audioRef.current) {
-      audioRef.current.volume = currentVol;
-    }
-  }, [volume, isMuted]);
-
-  useEffect(() => {
-    if (!currentTrack || typeof window === 'undefined' || !('mediaSession' in navigator)) return;
-    navigator.mediaSession.metadata = new window.MediaMetadata({
-      title: currentTrack.title,
-      artist: currentTrack.artist,
-      album: 'Musy-Fi Cloud Library',
-      artwork: currentTrack.thumbnail 
-        ? [{ src: currentTrack.thumbnail, sizes: '300x300', type: 'image/jpeg' }]
-        : [{ src: '/placeholder-artwork.jpg', sizes: '300x300', type: 'image/jpeg' }]
+    if (!song || typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: song.title,
+      artist: song.artist || 'Unknown',
+      album: 'Musy-Fi',
+      artwork: song.thumbnail ? [{ src: song.thumbnail, sizes: '300x300', type: 'image/jpeg' }] : [],
     });
-    navigator.mediaSession.setActionHandler('play', () => setPlaying(true));
-    navigator.mediaSession.setActionHandler('pause', () => setPlaying(false));
-    navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack());
-    navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
+    navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
+    navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
+    navigator.mediaSession.setActionHandler('nexttrack', handleNext);
+    navigator.mediaSession.setActionHandler('previoustrack', handlePrev);
     try {
-      navigator.mediaSession.setActionHandler('seekto', (details) => {
-        if (details.seekTime !== undefined) seekTo(details.seekTime);
+      navigator.mediaSession.setActionHandler('seekto', (d) => {
+        if (d.seekTime !== undefined && audioRef.current) {
+          audioRef.current.currentTime = d.seekTime;
+          setProgress(d.seekTime);
+        }
       });
-    } catch (err) {}
-    try {
-      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
-        const offset = details.seekOffset || 10;
-        const current = audioRef.current && !isVideoTrack ? audioRef.current.currentTime : progress;
-        seekTo(Math.max(0, current - offset));
-      });
-    } catch (err) {}
-    try {
-      navigator.mediaSession.setActionHandler('seekforward', (details) => {
-        const offset = details.seekOffset || 10;
-        const current = audioRef.current && !isVideoTrack ? audioRef.current.currentTime : progress;
-        seekTo(Math.min(duration || 0, current + offset));
-      });
-    } catch (err) {}
+    } catch {}
     return () => {
       navigator.mediaSession.setActionHandler('play', null);
       navigator.mediaSession.setActionHandler('pause', null);
       navigator.mediaSession.setActionHandler('nexttrack', null);
       navigator.mediaSession.setActionHandler('previoustrack', null);
-      try {
-        navigator.mediaSession.setActionHandler('seekto', null);
-        navigator.mediaSession.setActionHandler('seekbackward', null);
-        navigator.mediaSession.setActionHandler('seekforward', null);
-      } catch (err) {}
     };
-  }, [currentTrack, duration, progress, isVideoTrack]);
+  }, [song, queue, currentIndex]);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !('mediaSession' in navigator) || !currentTrack) return;
+    if (!('mediaSession' in navigator)) return;
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+  }, [isPlaying]);
+
+  const handleNext = () => {
+    if (currentIndex < queue.length - 1) onSongChange(queue[currentIndex + 1]);
+  };
+
+  const handlePrev = () => {
+    if (audioRef.current && audioRef.current.currentTime > 3) {
+      audioRef.current.currentTime = 0;
+      return;
+    }
+    if (currentIndex > 0) onSongChange(queue[currentIndex - 1]);
+  };
+
+  const handleDownload = async () => {
+    if (!streamUrl) return;
     try {
-      if ('setPositionState' in navigator.mediaSession) {
-        if (duration && duration > 0 && progress >= 0 && progress <= duration) {
-          navigator.mediaSession.setPositionState({
-            duration: duration,
-            playbackRate: 1,
-            position: progress,
-          });
-        }
-      }
-    } catch (err) {}
-  }, [isPlaying, progress, duration, currentTrack]);
-
-  useEffect(() => {
-    if (trackRestartTrigger === 0 || !currentTrack) return;
-    if (isVideoTrack && ytPlayerRef.current) {
-      try {
-        ytPlayerRef.current.seekTo(0, 'seconds');
-      } catch (err) {}
-    } else if (audioRef.current) {
-      try {
-        audioRef.current.currentTime = 0;
-        audioRef.current.play().catch(err => {});
-      } catch (err) {}
-    }
-    setProgress(0);
-    setPlaying(true);
-  }, [trackRestartTrigger]);
-
-  if (!currentTrack) return null;
-
-  const handleAudioTimeUpdate = () => {
-    if (isSeeking || !audioRef.current) return;
-    setProgress(audioRef.current.currentTime);
-  };
-
-  const handleAudioLoadedMetadata = () => {
-    if (!audioRef.current) return;
-    setDuration(audioRef.current.duration);
-  };
-
-  const handleAudioEnded = () => { nextTrack(); };
-
-  const handleAudioCanPlay = () => {
-    if (isPlaying && audioRef.current && audioRef.current.paused) {
-      audioRef.current.play().catch(err => {});
+      const res = await fetch(streamUrl);
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${song.title}.mp3`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      window.open(streamUrl, '_blank');
     }
   };
 
-  const handleAudioError = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
-    const err = e.currentTarget.error;
-    console.error('HTML5 Audio error encountered:', err);
-    if (currentTrack) {
-      if (err && (err.code === 1 || err.code === 2)) {
-        const savedProgress = progress;
-        setTimeout(() => {
-          if (audioRef.current) {
-            audioRef.current.load();
-            audioRef.current.currentTime = savedProgress;
-            if (isPlaying) audioRef.current.play().catch(() => {});
-          }
-        }, 1000);
-        return;
-      }
-      const token = (session?.user as any)?.id || '';
-      const proxyUrl = `/api/songs/stream?id=${currentTrack.id}${token ? `&token=${token}` : ''}`;
-      if (streamUrl !== proxyUrl) {
-        setStreamUrl(proxyUrl);
-        const savedProgress = progress;
-        setTimeout(() => {
-          if (audioRef.current) {
-            audioRef.current.load();
-            audioRef.current.currentTime = savedProgress;
-            if (isPlaying) audioRef.current.play().catch(() => {});
-          }
-        }, 50);
-        return;
-      }
-    }
-    if (isYouTubeTrack) setUseVideoFallback(true);
+  const formatTime = (t: number) => {
+    if (isNaN(t)) return '0:00';
+    const m = Math.floor(t / 60), s = Math.floor(t % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const handleVideoProgress = (state: { playedSeconds: number }) => {
-    if (isSeeking) return;
-    setProgress(state.playedSeconds);
-  };
-
-  const handleVideoDuration = (dur: number) => { setDuration(dur); };
-  const handleVideoEnded = () => { nextTrack(); };
-
-  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setIsSeeking(true);
-    setProgress(parseFloat(e.target.value));
-  };
-
-  const handleSeekEnd = (e: React.MouseEvent<HTMLInputElement> | React.TouchEvent<HTMLInputElement>) => {
-    setIsSeeking(false);
-    seekTo(parseFloat((e.target as HTMLInputElement).value));
-  };
-
-  const toggleMute = () => {
-    if (isMuted) {
-      setIsMuted(false);
-      setVolume(prevVolume);
-    } else {
-      setPrevVolume(volume);
-      setIsMuted(true);
-      setVolume(0);
-    }
-  };
-
-  const formatTime = (time: number) => {
-    if (isNaN(time)) return '0:00';
-    const mins = Math.floor(time / 60);
-    const secs = Math.floor(time % 60);
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
+  const progressPct = duration ? (progress / duration) * 100 : 0;
 
   return (
     <>
-      {!isVideoTrack && currentTrack && (
-        <audio
-          ref={audioRef}
-          src={streamUrl}
-          preload="auto"
-          onTimeUpdate={handleAudioTimeUpdate}
-          onLoadedMetadata={handleAudioLoadedMetadata}
-          onEnded={handleAudioEnded}
-          onCanPlay={handleAudioCanPlay}
-          onError={handleAudioError}
-        />
-      )}
-
-      {nextTrackUrl && (
-        <audio src={nextTrackUrl} preload="auto" muted style={{ display: 'none' }} />
-      )}
-
-      {isVideoTrack && (
-        <div className="fixed bottom-0 right-0 w-[200px] h-[200px] opacity-[0.001] pointer-events-none z-[-1] overflow-hidden">
-          <ReactPlayer
-            onReady={(player: any) => { ytPlayerRef.current = player; }}
-            url={
-              isYouTubeTrack
-                ? normalizeYouTubeUrl(currentTrack.sourceUrl)
-                : `https://vimeo.com/${currentTrack.sourceUrl}`
-            }
-            playing={isPlaying}
-            volume={isMuted ? 0 : volume}
-            playsinline
-            muted={false}
-            onProgress={handleVideoProgress}
-            onDuration={handleVideoDuration}
-            onEnded={handleVideoEnded}
-            width="100%"
-            height="100%"
-            config={{
-              youtube: {
-                playerVars: {
-                  controls: 0, autoplay: 1, modestbranding: 1,
-                  rel: 0, showinfo: 0, iv_load_policy: 3,
-                  disablekb: 1, enablejsapi: 1, playsinline: 1
-                },
-              },
-            }}
-          />
-        </div>
-      )}
+      <audio
+        ref={audioRef}
+        src={streamUrl}
+        preload="auto"
+        onTimeUpdate={() => { if (!isSeeking && audioRef.current) setProgress(audioRef.current.currentTime); }}
+        onLoadedMetadata={() => { if (audioRef.current) setDuration(audioRef.current.duration); }}
+        onEnded={handleNext}
+        onCanPlay={() => { if (isPlaying && audioRef.current?.paused) audioRef.current.play().catch(() => {}); }}
+      />
 
       {isExpanded && (
-        <div className="fixed inset-0 bg-zinc-950/98 backdrop-blur-2xl z-50 md:hidden flex flex-col justify-between px-6 py-8 select-none text-white animate-slide-up">
-          <div className="flex items-center justify-between">
-            <button onClick={() => setIsExpanded(false)} className="p-2.5 bg-zinc-900/60 hover:bg-zinc-800 rounded-full border border-zinc-800/40">
-              <ChevronDown className="w-6 h-6 text-zinc-400" />
-            </button>
-            <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Now Playing</span>
-            <div className="w-11"></div>
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          background: 'linear-gradient(160deg, #1a0505 0%, #0d0d0d 100%)',
+          display: 'flex', flexDirection: 'column', padding: '20px',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
+            <button onClick={() => setIsExpanded(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: 24, cursor: 'pointer' }}>⌄</button>
+            <span style={{ color: '#888', fontSize: 12, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' }}>Now Playing</span>
+            <button onClick={handleDownload} style={{ background: 'none', border: 'none', color: '#e53935', fontSize: 20, cursor: 'pointer' }} title="Download MP3">⬇</button>
           </div>
 
-          <div className="flex-1 flex flex-col items-center justify-center my-8 w-full overflow-hidden">
-            <VinylPlayer currentTrack={currentTrack} isPlaying={isPlaying} />
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
+            <div style={{ width: 260, height: 260, borderRadius: 20, overflow: 'hidden', background: '#1a1a1a', boxShadow: '0 20px 60px rgba(229,57,53,0.3)', border: '2px solid rgba(229,57,53,0.2)' }}>
+              {song.thumbnail
+                ? <img src={song.thumbnail} alt={song.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 80 }}>🎵</div>
+              }
+            </div>
           </div>
 
-          <div className="space-y-1 mb-4">
-            <div className="flex items-center justify-between">
-              <div className="max-w-[80%]">
-                <h2 className="text-2xl font-black text-white truncate tracking-tight">{currentTrack.title}</h2>
-                <p className="text-base text-zinc-400 font-semibold truncate mt-0.5">{currentTrack.artist}</p>
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <h2 style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 6 }}>{song.title}</h2>
+                <p style={{ color: '#888', fontSize: 15 }}>{song.artist || 'Unknown'}</p>
               </div>
-              <button className="text-zinc-400 hover:text-white p-2">
-                <Heart className="w-6 h-6" />
-              </button>
+              {cacheStatus === 'cached' && <span style={{ color: '#1DB954', fontSize: 12 }}>✓ Cached</span>}
+              {cacheStatus === 'caching' && <span style={{ color: '#888', fontSize: 12 }}>💾 Saving...</span>}
             </div>
           </div>
 
-          <div className="space-y-3 mb-6">
-            <input
-              type="range" min={0} max={duration || 0} step={0.1} value={progress}
-              onChange={handleSeekChange} onMouseUp={handleSeekEnd} onTouchEnd={handleSeekEnd}
-              className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-spotify-green focus:outline-none"
+          <div style={{ marginBottom: 20 }}>
+            <input type="range" min={0} max={duration || 0} step={0.1} value={progress}
+              onChange={e => { setIsSeeking(true); setProgress(+e.target.value); }}
+              onMouseUp={e => { setIsSeeking(false); if (audioRef.current) audioRef.current.currentTime = +(e.target as HTMLInputElement).value; }}
+              onTouchEnd={e => { setIsSeeking(false); if (audioRef.current) audioRef.current.currentTime = +(e.target as HTMLInputElement).value; }}
+              style={{ width: '100%', accentColor: '#e53935' }}
             />
-            <div className="flex justify-between text-xs text-zinc-500 font-bold uppercase tracking-wider">
-              <span>{formatTime(progress)}</span>
-              <span>{formatTime(duration)}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: 12, marginTop: 4 }}>
+              <span>{formatTime(progress)}</span><span>{formatTime(duration)}</span>
             </div>
           </div>
 
-          <div className="flex items-center justify-between px-2 mb-4">
-            <button onClick={() => setPlaybackMode(playbackMode === 'shuffle' ? 'normal' : 'shuffle')}
-              className={`p-3 transition-colors ${playbackMode === 'shuffle' ? 'text-spotify-green' : 'text-zinc-500'}`}>
-              <Shuffle className="w-5 h-5" />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+            <button onClick={handlePrev} style={{ background: 'none', border: 'none', color: '#ccc', fontSize: 28, cursor: 'pointer' }}>⏮</button>
+            <button onClick={() => setIsPlaying(!isPlaying)} style={{
+              width: 68, height: 68, borderRadius: '50%',
+              background: 'linear-gradient(135deg,#e53935,#c62828)',
+              border: 'none', color: '#fff', fontSize: 26, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 8px 24px rgba(229,57,53,0.4)',
+            }}>
+              {isPlaying ? '⏸' : '▶'}
             </button>
-            <button onClick={prevTrack} className="p-3 text-zinc-300">
-              <SkipBack className="w-7 h-7 fill-current" />
+            <button onClick={handleNext} style={{ background: 'none', border: 'none', color: '#ccc', fontSize: 28, cursor: 'pointer' }}>⏭</button>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button onClick={() => setMuted(!muted)} style={{ background: 'none', border: 'none', color: '#888', fontSize: 18, cursor: 'pointer' }}>
+              {muted || volume === 0 ? '🔇' : '🔊'}
             </button>
-            <button onClick={togglePlay} className="w-16 h-16 bg-white rounded-full text-black flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-transform">
-              {isPlaying ? <Pause className="w-6 h-6 fill-black" /> : <Play className="w-6 h-6 fill-black ml-1" />}
-            </button>
-            <button onClick={nextTrack} className="p-3 text-zinc-300">
-              <SkipForward className="w-7 h-7 fill-current" />
-            </button>
-            <button onClick={() => setPlaybackMode(playbackMode === 'repeat' ? 'normal' : 'repeat')}
-              className={`p-3 transition-colors ${playbackMode === 'repeat' ? 'text-spotify-green' : 'text-zinc-500'}`}>
-              <Repeat className="w-5 h-5" />
-            </button>
+            <input type="range" min={0} max={1} step={0.01} value={muted ? 0 : volume}
+              onChange={e => { setVolume(+e.target.value); if (+e.target.value > 0) setMuted(false); }}
+              style={{ flex: 1, accentColor: '#e53935' }}
+            />
           </div>
         </div>
       )}
 
-      <div
-        onClick={() => setIsExpanded(true)}
-        className="fixed bottom-14 md:bottom-0 left-0 right-0 h-20 md:h-24 bg-zinc-950/95 border-t border-zinc-900 px-4 md:px-6 flex items-center justify-between select-none z-30 backdrop-blur-lg cursor-pointer md:cursor-default"
-      >
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-zinc-900 md:hidden">
-          <div className="bg-spotify-green h-full transition-all duration-300"
-            style={{ width: `${duration ? (progress / duration) * 100 : 0}%` }}></div>
+      <div style={{
+        position: 'fixed', bottom: 56, left: 0, right: 0, zIndex: 50,
+        background: 'rgba(15,5,5,0.97)', borderTop: '1px solid #2a1010',
+        backdropFilter: 'blur(20px)',
+      }}>
+        <div style={{ height: 2, background: '#2a1010' }}>
+          <div style={{ height: '100%', background: '#e53935', width: `${progressPct}%`, transition: 'width 0.3s linear' }} />
         </div>
-
-        <div className="flex items-center gap-2 md:gap-4 w-[60%] md:w-[30%] min-w-[140px] md:min-w-[180px]">
-          <div className="w-10 h-10 md:w-16 md:h-16 bg-zinc-900 rounded flex-shrink-0 flex items-center justify-center border border-zinc-800 overflow-hidden">
-            {currentTrack.thumbnail
-              ? <img src={currentTrack.thumbnail} alt={currentTrack.title} className="w-full h-full object-cover" />
-              : <Music className="w-5 h-5 text-zinc-500" />}
+        <div style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', gap: 12 }}
+          onClick={() => setIsExpanded(true)}>
+          <div style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', background: '#1a1a1a', flexShrink: 0 }}>
+            {song.thumbnail
+              ? <img src={song.thumbnail} alt={song.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🎵</div>
+            }
           </div>
-          <div className="truncate flex-1">
-            <h4 className="text-xs md:text-sm font-bold text-white truncate">{currentTrack.title}</h4>
-            <p className="text-[10px] md:text-xs text-zinc-400 truncate">{currentTrack.artist}</p>
-            {importStatus === 'pending' && (
-              <span className="text-[9px] text-amber-400 font-semibold tracking-wide animate-pulse">⏳ Saving to library…</span>
-            )}
-            {importStatus === 'failed' && (
-              <span className="text-[9px] text-red-400 font-semibold tracking-wide">⚠ Save failed — streaming live</span>
-            )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {loadingUrl ? '⏳ Loading...' : song.title}
+            </div>
+            <div style={{ color: '#666', fontSize: 12 }}>
+              {song.artist || 'Unknown'}
+              {cacheStatus === 'cached' && <span style={{ color: '#1DB954', marginLeft: 6 }}>✓</span>}
+              {cacheStatus === 'caching' && <span style={{ color: '#888', marginLeft: 6 }}>💾</span>}
+            </div>
           </div>
-          <button onClick={(e) => e.stopPropagation()} className="text-zinc-400 hover:text-white transition-colors p-1">
-            <Heart className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div onClick={(e) => e.stopPropagation()} className="flex flex-col items-center gap-1 md:gap-2 flex-1 max-w-2xl px-2 md:px-4">
-          <div className="flex items-center gap-3 md:gap-5">
-            <button onClick={(e) => { e.stopPropagation(); setPlaybackMode(playbackMode === 'shuffle' ? 'normal' : 'shuffle'); }}
-              className={`hover:text-white transition-colors hidden md:block ${playbackMode === 'shuffle' ? 'text-spotify-green' : 'text-zinc-400'}`}>
-              <Shuffle className="w-4 h-4" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} onClick={e => e.stopPropagation()}>
+            <button onClick={handleDownload} style={{ background: 'none', border: 'none', color: '#e53935', fontSize: 18, cursor: 'pointer' }} title="Download">⬇</button>
+            <button onClick={handlePrev} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: 22, cursor: 'pointer' }}>⏮</button>
+            <button onClick={() => setIsPlaying(!isPlaying)} style={{
+              width: 38, height: 38, borderRadius: '50%',
+              background: 'linear-gradient(135deg,#e53935,#c62828)',
+              border: 'none', color: '#fff', fontSize: 16, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {isPlaying ? '⏸' : '▶'}
             </button>
-            <button onClick={(e) => { e.stopPropagation(); prevTrack(); }} className="text-zinc-400 hover:text-white transition-colors p-1">
-              <SkipBack className="w-5 h-5 fill-zinc-400 hover:fill-white" />
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); togglePlay(); }}
-              className="bg-white hover:scale-105 p-2 md:p-3 rounded-full text-black transition-transform flex items-center justify-center">
-              {isPlaying
-                ? <Pause className="w-4 h-4 md:w-5 md:h-5 fill-black" />
-                : <Play className="w-4 h-4 md:w-5 md:h-5 fill-black ml-0.5" />}
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); nextTrack(); }} className="text-zinc-400 hover:text-white transition-colors p-1">
-              <SkipForward className="w-5 h-5 fill-zinc-400 hover:fill-white" />
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); setPlaybackMode(playbackMode === 'repeat' ? 'normal' : 'repeat'); }}
-              className={`hover:text-white transition-colors hidden md:block ${playbackMode === 'repeat' ? 'text-spotify-green' : 'text-zinc-400'}`}>
-              <Repeat className="w-4 h-4" />
-            </button>
+            <button onClick={handleNext} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: 22, cursor: 'pointer' }}>⏭</button>
           </div>
-
-          <div className="w-full hidden md:flex items-center gap-3">
-            <span className="text-[10px] font-semibold text-zinc-400 w-8 text-right">{formatTime(progress)}</span>
-            <input type="range" min={0} max={duration || 0} step={0.1} value={progress}
-              onChange={handleSeekChange} onMouseUp={handleSeekEnd} onTouchEnd={handleSeekEnd}
-              className="flex-1 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-spotify-green focus:outline-none" />
-            <span className="text-[10px] font-semibold text-zinc-400 w-8">{formatTime(duration)}</span>
-          </div>
-        </div>
-
-        <div onClick={(e) => e.stopPropagation()} className="hidden md:flex items-center justify-end gap-3 w-[30%] min-w-[150px] text-zinc-400">
-          <button onClick={toggleMute} className="hover:text-white transition-colors">
-            {isMuted || volume === 0 ? <VolumeX className="w-5 h-5 text-red-500" /> : <Volume2 className="w-5 h-5" />}
-          </button>
-          <input type="range" min={0} max={1} step={0.01} value={isMuted ? 0 : volume}
-            onChange={(e) => { const val = parseFloat(e.target.value); setVolume(val); if (val > 0) setIsMuted(false); }}
-            className="w-24 h-1 bg-zinc-850 rounded-lg appearance-none cursor-pointer accent-spotify-green focus:outline-none" />
         </div>
       </div>
     </>
