@@ -1,11 +1,14 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Providers } from './providers';
+
+export const viewport: Viewport = {
+  themeColor: '#0a0a0a',
+};
 
 export const metadata: Metadata = {
   title: 'Musy-Fi',
   description: 'Your personal YouTube music library',
-  themeColor: '#0a0a0a',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
@@ -29,4 +32,3 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
-
