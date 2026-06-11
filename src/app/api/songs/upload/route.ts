@@ -70,19 +70,13 @@ export async function POST(request: Request) {
       const chunks: Buffer[] = [];
       let totalBytes = 0;
 
-      // Read a partial buffer (up to 512KB) to extract ID3 metadata tags
       for await (const chunk of stream) {
         chunks.push(Buffer.from(chunk));
         totalBytes += chunk.length;
-        if (totalBytes >= 512 * 1024) {
-          break;
-        }
+        if (totalBytes >= 512 * 1024) break;
       }
 
-      // Destroy the stream to avoid full download overhead
-      if (typeof stream.destroy === 'function') {
-        stream.destroy();
-      }
+      if (typeof stream.destroy === 'function') stream.destroy();
 
       const buffer = Buffer.concat(chunks);
       const mimeType = fileMeta.data.mimeType || 'audio/mpeg';
@@ -92,23 +86,24 @@ export async function POST(request: Request) {
         metadata.title = path.parse(fileMeta.data.name || 'Untitled').name;
       }
 
-      // Create database entry
       const song = await prisma.song.create({
         data: {
           title: metadata.title,
-          artist: metadata.artist,
-          type: 'google',
-          sourceUrl: fileId,
-          duration: metadata.duration,
-          thumbnail: metadata.thumbnail,
+          artist: metadata.artist || 'Unknown',
+          youtubeUrl: '',
+          videoId: fileId,
+          driveFileId: fileId,
+          duration: metadata.duration || 0,
+          thumbnail: metadata.thumbnail || null,
           userId: userId,
+          importStatus: 'ready',
         },
       });
 
       return NextResponse.json({ success: true, song });
     }
 
-    // Case 2: Standard multipart form file upload (credentials/local fallback)
+    // Case 2: Standard multipart form file upload
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
 
@@ -129,27 +124,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Uploaded file must be an audio track' }, { status: 400 });
     }
 
-    // Hard limit check for serverless function execution
     if (file.size > 4.5 * 1024 * 1024) {
-      return NextResponse.json({ error: 'Vercel limits standard file uploads to 4.5MB. Please sign in with Google to upload larger files.' }, { status: 400 });
+      return NextResponse.json({ error: 'File too large. Max 4.5MB for direct upload. Please sign in with Google to upload larger files.' }, { status: 400 });
     }
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Save locally or to Google Drive if credentials exist
     const uploadResult = await saveAudioFile(userId, file.name, buffer, fileType, accessToken);
 
-    // Create DB entry for the Song
     const song = await prisma.song.create({
       data: {
         title: uploadResult.metadata.title,
-        artist: uploadResult.metadata.artist,
-        type: uploadResult.storageType,
-        sourceUrl: uploadResult.sourceUrl,
-        duration: uploadResult.metadata.duration,
-        thumbnail: uploadResult.metadata.thumbnail,
+        artist: uploadResult.metadata.artist || 'Unknown',
+        youtubeUrl: '',
+        videoId: uploadResult.sourceUrl || file.name,
+        driveFileId: uploadResult.sourceUrl || null,
+        duration: uploadResult.metadata.duration || 0,
+        thumbnail: uploadResult.metadata.thumbnail || null,
         userId: userId,
+        importStatus: 'ready',
       },
     });
 
