@@ -6,11 +6,19 @@ import { useSession } from 'next-auth/react';
 export interface Song {
   id: string;
   title: string;
-  artist: string;
-  type: string; // "mp3" | "google" | "youtube" | "vimeo"
-  sourceUrl: string;
-  duration: number;
+  artist: string | null;
+  youtubeUrl?: string;
+  videoId?: string;
+  driveFileId?: string | null;
+  duration: number | null;
   thumbnail: string | null;
+  liked?: boolean;
+  importStatus?: string;
+  addedAt?: string;
+  lastPlayedAt?: string | null;
+  // Computed helpers (not in DB)
+  type?: string;
+  sourceUrl?: string;
   isLiked?: boolean;
 }
 
@@ -28,271 +36,133 @@ interface PlayerContextType {
   activeView: ActiveView;
   activePlaylistId: string | null;
   trackRestartTrigger: number;
-  
+
   // Theme state
   userTheme: 'male' | 'female' | null;
   loadingTheme: boolean;
   setUserTheme: (theme: 'male' | 'female') => Promise<void>;
-  
-  // Playback Control Functions
+
+  // Playback Control
   playTrack: (track: Song, newQueueContext?: Song[]) => void;
   togglePlay: () => void;
   setPlaying: (playing: boolean) => void;
-  nextTrack: () => void;
-  prevTrack: () => void;
-  setQueue: (queue: Song[]) => void;
-  addToQueue: (track: Song) => void;
-  removeFromQueue: (trackId: string) => void;
-  setVolume: (volume: number) => void;
-  setProgress: (progress: number) => void;
-  setDuration: (duration: number) => void;
-  setPlaybackMode: (mode: 'normal' | 'shuffle' | 'repeat') => void;
-  
-  // Navigation
-  setActiveView: (view: ActiveView, playlistId?: string | null) => void;
+  playNext: () => void;
+  playPrev: () => void;
+  setProgress: (p: number) => void;
+  setVolume: (v: number) => void;
+  setPlaybackMode: (m: 'normal' | 'shuffle' | 'repeat') => void;
+  setActiveView: (v: ActiveView) => void;
+  setActivePlaylistId: (id: string | null) => void;
+
+  // Library
+  songs: Song[];
+  setSongs: React.Dispatch<React.SetStateAction<Song[]>>;
+  fetchSongs: () => Promise<void>;
 }
 
-const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
+const PlayerContext = createContext<PlayerContextType | null>(null);
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
+  const { data: session } = useSession();
   const [currentTrack, setCurrentTrack] = useState<Song | null>(null);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [queue, setQueueState] = useState<Song[]>([]);
-  const [currentIndex, setCurrentIndex] = useState<number>(-1);
-  const [volume, setVolumeState] = useState<number>(0.7); // default 70%
-  const [progress, setProgress] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(0);
-  const [playbackMode, setPlaybackMode] = useState<'normal' | 'shuffle' | 'repeat'>('normal');
+  const [isPlaying, setIsPlayingState] = useState(false);
+  const [queue, setQueue] = useState<Song[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [volume, setVolumeState] = useState(1);
+  const [progress, setProgressState] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [playbackMode, setPlaybackModeState] = useState<'normal' | 'shuffle' | 'repeat'>('normal');
   const [activeView, setActiveViewState] = useState<ActiveView>('home');
-  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
-  const [originalQueue, setOriginalQueue] = useState<Song[]>([]); // for restoring shuffle order
-  const [trackRestartTrigger, setTrackRestartTrigger] = useState<number>(0);
-
-  // User Theme State & Effects
+  const [activePlaylistId, setActivePlaylistIdState] = useState<string | null>(null);
+  const [trackRestartTrigger, setTrackRestartTrigger] = useState(0);
   const [userTheme, setUserThemeState] = useState<'male' | 'female' | null>(null);
-  const [loadingTheme, setLoadingTheme] = useState<boolean>(true);
+  const [loadingTheme, setLoadingTheme] = useState(false);
+  const [songs, setSongs] = useState<Song[]>([]);
 
-  const { data: session, status } = useSession();
+  const fetchSongs = async () => {
+    try {
+      const res = await fetch('/api/songs/list');
+      const data = await res.json();
+      if (data.songs) setSongs(data.songs);
+    } catch {}
+  };
 
   useEffect(() => {
-    const fetchUserTheme = async () => {
-      if (status !== 'authenticated') {
-        setUserThemeState(null);
-        setLoadingTheme(false);
-        return;
-      }
-      try {
-        const res = await fetch('/api/user/theme');
-        if (res.ok) {
-          const data = await res.json();
-          setUserThemeState(data.theme);
-        }
-      } catch (err) {
-        console.error('Error fetching theme:', err);
-      } finally {
-        setLoadingTheme(false);
-      }
-    };
+    if (session?.user) fetchSongs();
+  }, [session]);
 
-    fetchUserTheme();
-  }, [session, status]);
+  const playTrack = (track: Song, newQueueContext?: Song[]) => {
+    if (currentTrack?.id === track.id) {
+      setTrackRestartTrigger(t => t + 1);
+      setIsPlayingState(true);
+      return;
+    }
+    const ctx = newQueueContext || queue;
+    const idx = ctx.findIndex(s => s.id === track.id);
+    setCurrentTrack(track);
+    setQueue(ctx);
+    setCurrentIndex(idx >= 0 ? idx : 0);
+    setIsPlayingState(true);
+    setProgressState(0);
+  };
+
+  const togglePlay = () => setIsPlayingState(p => !p);
+  const setPlaying = (playing: boolean) => setIsPlayingState(playing);
+
+  const playNext = () => {
+    if (!queue.length) return;
+    const next = playbackMode === 'shuffle'
+      ? Math.floor(Math.random() * queue.length)
+      : (currentIndex + 1) % queue.length;
+    setCurrentTrack(queue[next]);
+    setCurrentIndex(next);
+    setProgressState(0);
+    setIsPlayingState(true);
+  };
+
+  const playPrev = () => {
+    if (!queue.length) return;
+    const prev = currentIndex > 0 ? currentIndex - 1 : queue.length - 1;
+    setCurrentTrack(queue[prev]);
+    setCurrentIndex(prev);
+    setProgressState(0);
+    setIsPlayingState(true);
+  };
 
   const setUserTheme = async (theme: 'male' | 'female') => {
+    setLoadingTheme(true);
     try {
-      setUserThemeState(theme); // optimistic update
-      const res = await fetch('/api/user/theme', {
+      setUserThemeState(theme);
+      localStorage.setItem('musyfi-theme', theme);
+      await fetch('/api/user/theme', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ theme }),
       });
-      if (!res.ok) {
-        throw new Error('Failed to update theme in database');
-      }
-    } catch (err) {
-      console.error('Failed to update theme:', err);
+    } finally {
+      setLoadingTheme(false);
     }
-  };
-
-  // Load volume from local storage on mount
-  useEffect(() => {
-    const savedVolume = localStorage.getItem('musifi_volume');
-    if (savedVolume) {
-      setVolumeState(parseFloat(savedVolume));
-    }
-  }, []);
-
-  const setVolume = (vol: number) => {
-    const safeVol = Math.max(0, Math.min(1, vol));
-    setVolumeState(safeVol);
-    localStorage.setItem('musifi_volume', safeVol.toString());
-  };
-
-  const playTrack = (track: Song, newQueueContext?: Song[]) => {
-    if (currentTrack && currentTrack.id === track.id) {
-      // Force track restart if tapped again
-      setTrackRestartTrigger(Date.now());
-      setIsPlaying(true);
-      setProgress(0);
-      return;
-    }
-
-    if (newQueueContext && newQueueContext.length > 0) {
-      setQueueState(newQueueContext);
-      setOriginalQueue(newQueueContext);
-      const index = newQueueContext.findIndex((s) => s.id === track.id);
-      setCurrentIndex(index !== -1 ? index : 0);
-    } else {
-      // If track is not in queue, add it and play it
-      const existingIdx = queue.findIndex((s) => s.id === track.id);
-      if (existingIdx !== -1) {
-        setCurrentIndex(existingIdx);
-      } else {
-        const newQueue = [...queue, track];
-        setQueueState(newQueue);
-        setOriginalQueue(newQueue);
-        setCurrentIndex(newQueue.length - 1);
-      }
-    }
-    setCurrentTrack(track);
-    setIsPlaying(true);
-    setProgress(0);
-  };
-
-  const togglePlay = () => {
-    setIsPlaying(!isPlaying);
-  };
-
-  const setPlaying = (playing: boolean) => {
-    setIsPlaying(playing);
-  };
-
-  const nextTrack = () => {
-    if (queue.length === 0) return;
-    
-    if (playbackMode === 'repeat' && currentTrack) {
-      // Repeat track: reset progress and play again
-      setProgress(0);
-      // force reload stream
-      const temp = currentTrack;
-      setCurrentTrack(null);
-      setTimeout(() => setCurrentTrack(temp), 50);
-      return;
-    }
-
-    let nextIdx = currentIndex + 1;
-    if (playbackMode === 'shuffle') {
-      nextIdx = Math.floor(Math.random() * queue.length);
-    } else if (nextIdx >= queue.length) {
-      nextIdx = 0; // wrap around
-    }
-
-    setCurrentIndex(nextIdx);
-    setCurrentTrack(queue[nextIdx]);
-    setProgress(0);
-    setIsPlaying(true);
-  };
-
-  const prevTrack = () => {
-    if (queue.length === 0) return;
-
-    let prevIdx = currentIndex - 1;
-    if (playbackMode === 'shuffle') {
-      prevIdx = Math.floor(Math.random() * queue.length);
-    } else if (prevIdx < 0) {
-      prevIdx = queue.length - 1; // wrap to end
-    }
-
-    setCurrentIndex(prevIdx);
-    setCurrentTrack(queue[prevIdx]);
-    setProgress(0);
-    setIsPlaying(true);
-  };
-
-  const setQueue = (newQueue: Song[]) => {
-    setQueueState(newQueue);
-    setOriginalQueue(newQueue);
-    if (currentTrack) {
-      const idx = newQueue.findIndex((s) => s.id === currentTrack.id);
-      setCurrentIndex(idx);
-    }
-  };
-
-  const addToQueue = (track: Song) => {
-    if (queue.some((s) => s.id === track.id)) return;
-    setQueueState([...queue, track]);
-    setOriginalQueue([...originalQueue, track]);
-  };
-
-  const removeFromQueue = (trackId: string) => {
-    const newQueue = queue.filter((s) => s.id !== trackId);
-    setQueueState(newQueue);
-    setOriginalQueue(originalQueue.filter((s) => s.id !== trackId));
-    
-    if (currentTrack?.id === trackId) {
-      if (newQueue.length > 0) {
-        const nextIdx = currentIndex >= newQueue.length ? 0 : currentIndex;
-        setCurrentIndex(nextIdx);
-        setCurrentTrack(newQueue[nextIdx]);
-      } else {
-        setCurrentTrack(null);
-        setIsPlaying(false);
-        setCurrentIndex(-1);
-      }
-    } else {
-      // update currentIndex
-      if (currentTrack) {
-        const newIdx = newQueue.findIndex((s) => s.id === currentTrack.id);
-        setCurrentIndex(newIdx);
-      }
-    }
-  };
-
-  const setActiveView = (view: ActiveView, playlistId: string | null = null) => {
-    setActiveViewState(view);
-    setActivePlaylistId(playlistId);
   };
 
   return (
-    <PlayerContext.Provider
-      value={{
-        currentTrack,
-        isPlaying,
-        queue,
-        currentIndex,
-        volume,
-        progress,
-        duration,
-        playbackMode,
-        activeView,
-        activePlaylistId,
-        trackRestartTrigger,
-        userTheme,
-        loadingTheme,
-        setUserTheme,
-        playTrack,
-        togglePlay,
-        setPlaying,
-        nextTrack,
-        prevTrack,
-        setQueue,
-        addToQueue,
-        removeFromQueue,
-        setVolume,
-        setProgress,
-        setDuration,
-        setPlaybackMode,
-        setActiveView,
-      }}
-    >
+    <PlayerContext.Provider value={{
+      currentTrack, isPlaying, queue, currentIndex, volume, progress,
+      duration, playbackMode, activeView, activePlaylistId, trackRestartTrigger,
+      userTheme, loadingTheme, setUserTheme,
+      playTrack, togglePlay, setPlaying, playNext, playPrev,
+      setProgress: setProgressState, setVolume: setVolumeState,
+      setPlaybackMode: setPlaybackModeState,
+      setActiveView: setActiveViewState,
+      setActivePlaylistId: setActivePlaylistIdState,
+      songs, setSongs, fetchSongs,
+    }}>
       {children}
     </PlayerContext.Provider>
   );
 }
 
 export function usePlayer() {
-  const context = useContext(PlayerContext);
-  if (context === undefined) {
-    throw new Error('usePlayer must be used within a PlayerProvider');
-  }
-  return context;
+  const ctx = useContext(PlayerContext);
+  if (!ctx) throw new Error('usePlayer must be used within PlayerProvider');
+  return ctx;
 }
