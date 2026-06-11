@@ -9,31 +9,9 @@ export async function GET() {
     if (!session || !session.user || !(session.user as any).id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const userId = (session.user as any).id;
-
-    const playlists = await prisma.playlist.findMany({
-      where: { userId },
-      include: {
-        _count: {
-          select: { songs: true },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const formattedPlaylists = playlists.map((p) => ({
-      id: p.id,
-      name: p.name,
-      description: p.description,
-      coverImage: p.coverImage,
-      songCount: p._count.songs,
-      createdAt: p.createdAt,
-    }));
-
-    return NextResponse.json({ playlists: formattedPlaylists });
+    // Playlists feature not yet available — return empty array
+    return NextResponse.json({ playlists: [] });
   } catch (error: any) {
-    console.error('Error fetching playlists:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -44,27 +22,8 @@ export async function POST(request: Request) {
     if (!session || !session.user || !(session.user as any).id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const userId = (session.user as any).id;
-    const body = await request.json();
-    const { name, description, coverImage } = body;
-
-    if (!name) {
-      return NextResponse.json({ error: 'Playlist name is required' }, { status: 400 });
-    }
-
-    const playlist = await prisma.playlist.create({
-      data: {
-        name,
-        description,
-        coverImage: coverImage || null,
-        userId,
-      },
-    });
-
-    return NextResponse.json({ success: true, playlist });
+    return NextResponse.json({ error: 'Playlists feature coming soon' }, { status: 501 });
   } catch (error: any) {
-    console.error('Error creating playlist:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
