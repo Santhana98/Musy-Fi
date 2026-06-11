@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   const existing = await prisma.song.findFirst({ where: { userId, videoId } });
   if (existing) return NextResponse.json({ song: existing, duplicate: true });
 
-  // ── Step 1: Fetch metadata instantly via youtubei.js ──────────────────────
+  // Step 1: Fetch metadata quickly
   let title = 'Unknown Title';
   let artist = 'Unknown Artist';
   let thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const yt = await Innertube.create({
-      retrieve_player: false, // faster — metadata only
+      retrieve_player: false,
       generate_session_locally: true,
     });
     const info = await yt.getBasicInfo(videoId);
@@ -58,8 +58,7 @@ export async function POST(req: NextRequest) {
     console.warn('[link] Metadata fetch failed, using defaults:', e);
   }
 
-  // ── Step 2: Create song record immediately (status: pending) ──────────────
-  // Song appears in library RIGHT AWAY — user sees it within 3-5 seconds
+  // Step 2: Create song record immediately — appears in library right away
   const song = await prisma.song.create({
     data: {
       userId,
@@ -73,9 +72,9 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // ── Step 3: Background processing — resolve stream URL, update status ─────
-  // We don't await this — it runs after response is sent
-  setImmediate(async () => {
+  // Step 3: Background processing — verify stream is available
+  // Use Promise.resolve().then() instead of setImmediate for better serverless compatibility
+  Promise.resolve().then(async () => {
     try {
       await prisma.song.update({
         where: { id: song.id },
@@ -100,13 +99,13 @@ export async function POST(req: NextRequest) {
       }
     } catch (e) {
       console.error(`[link] Background processing failed for ${videoId}:`, e);
+      // Mark as ready anyway — stream will be resolved on play
       await prisma.song.update({
         where: { id: song.id },
-        data: { importStatus: 'failed' },
+        data: { importStatus: 'ready' },
       }).catch(() => {});
     }
   });
 
-  // Return immediately — song is already in library!
   return NextResponse.json({ song });
 }
