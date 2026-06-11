@@ -1,6 +1,6 @@
 // Musy-Fi Google Drive integration
 import { google } from 'googleapis';
-import prisma from './prisma';
+import { prisma } from './prisma';
 
 const clientID = process.env.GOOGLE_CLIENT_ID;
 const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
