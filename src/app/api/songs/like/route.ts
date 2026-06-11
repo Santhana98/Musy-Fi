@@ -12,19 +12,10 @@ export async function GET() {
 
     const userId = (session.user as any).id;
 
-    // Fetch liked songs
-    const likedSongs = await prisma.likedSong.findMany({
-      where: { userId },
-      include: {
-        song: true,
-      },
-      orderBy: { createdAt: 'desc' },
+    const songs = await prisma.song.findMany({
+      where: { userId, liked: true },
+      orderBy: { addedAt: 'desc' },
     });
-
-    const songs = likedSongs.map((ls) => ({
-      ...ls.song,
-      isLiked: true,
-    }));
 
     return NextResponse.json({ songs });
   } catch (error: any) {
@@ -42,37 +33,22 @@ export async function POST(request: Request) {
 
     const userId = (session.user as any).id;
     const body = await request.json();
-    const { songId } = body;
+    const { songId, id } = body;
+    const targetId = songId || id;
 
-    if (!songId) {
+    if (!targetId) {
       return NextResponse.json({ error: 'Song ID is required' }, { status: 400 });
     }
 
-    // Toggle liked song
-    const existingLike = await prisma.likedSong.findUnique({
-      where: {
-        userId_songId: { userId, songId },
-      },
+    const song = await prisma.song.findFirst({ where: { id: targetId, userId } });
+    if (!song) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    const updated = await prisma.song.update({
+      where: { id: targetId },
+      data: { liked: !song.liked },
     });
 
-    if (existingLike) {
-      // Unlike
-      await prisma.likedSong.delete({
-        where: {
-          userId_songId: { userId, songId },
-        },
-      });
-      return NextResponse.json({ success: true, isLiked: false });
-    } else {
-      // Like
-      await prisma.likedSong.create({
-        data: {
-          userId,
-          songId,
-        },
-      });
-      return NextResponse.json({ success: true, isLiked: true });
-    }
+    return NextResponse.json({ success: true, isLiked: updated.liked, liked: updated.liked });
   } catch (error: any) {
     console.error('Error toggling like status:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
