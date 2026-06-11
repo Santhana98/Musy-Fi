@@ -820,12 +820,12 @@ export default function MainView({ searchQuery }: MainViewProps) {
 
                       {/* Source tag (hidden on mobile) */}
                       <div className="hidden md:flex text-xs font-semibold items-center gap-1.5 text-zinc-400 capitalize">
-                        {song.type === 'youtube' ? (
+                        {(song.youtubeUrl || (song.videoId && song.videoId.length === 11)) ? (
                           <span className="flex items-center gap-1 text-red-500 bg-red-950/20 px-2 py-0.5 rounded border border-red-900/30">
                             <Youtube className="w-3.5 h-3.5" />
                             YouTube
                           </span>
-                        ) : song.type === 'google' ? (
+                        ) : song.driveFileId ? (
                           <span className="flex items-center gap-1 text-blue-500 bg-blue-950/20 px-2 py-0.5 rounded border border-blue-900/30">
                             <Disc className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '8s' }} />
                             G-Drive
@@ -1134,7 +1134,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
                     </div>
 
                     <div className="hidden md:flex text-xs text-zinc-400 capitalize">
-                      {song.type === 'youtube' ? 'YouTube' : song.type === 'google' ? 'Google Drive' : 'Local File'}
+                      {(song.videoId && !song.videoId.includes('/')) ? 'YouTube' : song.driveFileId ? 'Google Drive' : 'Upload'}
                     </div>
 
                     <div className="text-xs text-zinc-400 font-medium flex items-center justify-end gap-2 md:gap-3">
@@ -1478,7 +1478,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
                             </div>
 
                             <div className="hidden md:flex text-xs text-zinc-400 capitalize">
-                              {song.type === 'youtube' ? 'YouTube' : song.type === 'google' ? 'Google Drive' : 'Local File'}
+                              {(song.videoId && !song.videoId.includes('/')) ? 'YouTube' : song.driveFileId ? 'Google Drive' : 'Upload'}
                             </div>
 
                             <div className="text-xs text-zinc-400 font-medium flex items-center justify-end gap-2 md:gap-3">
