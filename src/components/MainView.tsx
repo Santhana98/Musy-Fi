@@ -63,7 +63,6 @@ export default function MainView({ searchQuery }: MainViewProps) {
     currentTrack, 
     isPlaying,
     togglePlay,
-    addToQueue,
     userTheme,
     loadingTheme,
     setUserTheme,
