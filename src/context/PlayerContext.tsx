@@ -51,7 +51,7 @@ interface PlayerContextType {
   setProgress: (p: number) => void;
   setVolume: (v: number) => void;
   setPlaybackMode: (m: 'normal' | 'shuffle' | 'repeat') => void;
-  setActiveView: (v: ActiveView) => void;
+  setActiveView: (v: ActiveView, playlistId?: string | null) => void;
   setActivePlaylistId: (id: string | null) => void;
 
   // Library
@@ -152,7 +152,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       playTrack, togglePlay, setPlaying, playNext, playPrev,
       setProgress: setProgressState, setVolume: setVolumeState,
       setPlaybackMode: setPlaybackModeState,
-      setActiveView: setActiveViewState,
+      setActiveView: (v: ActiveView, playlistId?: string | null) => { setActiveViewState(v); if (playlistId !== undefined) setActivePlaylistIdState(playlistId); },
       setActivePlaylistId: setActivePlaylistIdState,
       songs, setSongs, fetchSongs,
     }}>
