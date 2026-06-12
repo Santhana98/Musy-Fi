@@ -638,7 +638,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
   // Filtered Songs for Search
   const filteredSongs = allSongs.filter(song =>
     song.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    song.artist.toLowerCase().includes(searchQuery.toLowerCase())
+    (song.artist || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const filteredPlaylists = playlistsList.filter(p =>
@@ -852,7 +852,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
-                        <span className="w-8 text-right">{formatDuration(song.duration)}</span>
+                        <span className="w-8 text-right">{formatDuration(song.duration ?? 0)}</span>
                       </div>
                     </div>
                   );
@@ -992,7 +992,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
                           >
                             <Heart className="w-4 h-4" />
                           </button>
-                          <span className="text-xs text-zinc-400 font-medium">{formatDuration(song.duration)}</span>
+                          <span className="text-xs text-zinc-400 font-medium">{formatDuration(song.duration ?? 0)}</span>
                         </div>
                       </div>
                     ))}
@@ -1143,7 +1143,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
                       >
                         <Heart className="w-4 h-4" />
                       </button>
-                      <span className="w-8 text-right">{formatDuration(song.duration)}</span>
+                      <span className="w-8 text-right">{formatDuration(song.duration ?? 0)}</span>
                     </div>
                   </div>
                 );
@@ -1494,7 +1494,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
-                              <span className="w-8 text-right">{formatDuration(song.duration)}</span>
+                              <span className="w-8 text-right">{formatDuration(song.duration ?? 0)}</span>
                             </div>
                           </div>
                         );
@@ -1899,7 +1899,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
                 const q = addSearchQuery.toLowerCase();
                 return (
                   song.title.toLowerCase().includes(q) ||
-                  song.artist.toLowerCase().includes(q)
+                  (song.artist || '').toLowerCase().includes(q)
                 );
               }).length === 0 ? (
                 <div className="py-12 text-center text-zinc-500 text-sm">
@@ -1912,7 +1912,7 @@ export default function MainView({ searchQuery }: MainViewProps) {
                     const q = addSearchQuery.toLowerCase();
                     return (
                       song.title.toLowerCase().includes(q) ||
-                      song.artist.toLowerCase().includes(q)
+                      (song.artist || '').toLowerCase().includes(q)
                     );
                   })
                   .map((song) => {
