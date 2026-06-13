@@ -40,6 +40,19 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         });
       }
     }
+
+    // Handle Capacitor hardware back button on Android
+    if (typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform?.()) {
+      import('@capacitor/app').then(({ App }) => {
+        App.addListener('backButton', ({ canGoBack }) => {
+          if (!canGoBack || window.location.pathname === '/') {
+            App.exitApp();
+          } else {
+            window.history.back();
+          }
+        });
+      });
+    }
   }, []);
 
   return (
