@@ -19,6 +19,17 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           }
         });
       } else {
+        // Clear all Cache Storage except the current expected ones to wipe out any Lovable-cached pages/assets
+        if ('caches' in window) {
+          caches.keys().then((names) => {
+            for (let name of names) {
+              if (name !== 'musyfi-v2' && name !== 'musyfi-audio-v2') {
+                caches.delete(name);
+              }
+            }
+          });
+        }
+
         // Register service worker in production only
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js').then(

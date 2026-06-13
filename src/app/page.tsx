@@ -124,8 +124,8 @@ export default function Home() {
   };
 
   const bgImage = theme === 'male'
-    ? 'https://i.imgur.com/7bMqysF.jpeg'
-    : 'https://i.imgur.com/KpMpDDv.jpeg';
+    ? '/bg-male.jpg'
+    : '/bg-female.jpg';
 
   const filteredSongs = tab === 'liked'
     ? songs.filter(s => s.liked)

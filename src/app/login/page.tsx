@@ -29,13 +29,15 @@ export default function LoginPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(160deg, #2a0a0a 0%, #1a0505 40%, #0d0d0d 100%)',
+      backgroundImage: 'url(/bg-login-cassette.jpg)',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '1rem', position: 'relative', overflow: 'hidden',
     }}>
       <div style={{
-        position: 'absolute', inset: 0, opacity: 0.07,
-        backgroundImage: 'radial-gradient(circle at 20% 80%, #e53935 0%, transparent 50%), radial-gradient(circle at 80% 20%, #e53935 0%, transparent 50%)',
+        position: 'absolute', inset: 0, opacity: 0.35,
+        backgroundColor: '#000',
       }} />
 
       <div style={{
@@ -49,13 +51,12 @@ export default function LoginPage() {
         position: 'relative', zIndex: 1,
       }}>
         <div style={{ textAlign: 'center', marginBottom: '1.8rem' }}>
-          <div style={{
+          <img src="/logo.jpg" alt="Musy-Fi Logo" style={{
             width: 64, height: 64, borderRadius: '50%',
-            background: 'linear-gradient(135deg, #e53935, #ff7043)',
+            objectFit: 'cover',
             margin: '0 auto 12px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 28,
-          }}>🎧</div>
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+          }} />
           <h1 style={{ fontSize: 28, fontWeight: 900, color: '#e53935', fontFamily: 'Georgia, serif' }}>Musy-Fi</h1>
           <p style={{ color: '#888', fontSize: 14, marginTop: 6 }}>
             {isSignup ? 'Create your account' : 'Log in to continue'}
