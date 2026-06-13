@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
-import MusicPlayer from '@/components/MusicPlayer';
 import { usePlayer, Song } from '@/context/PlayerContext';
 
 export default function SearchPage() {
@@ -109,16 +108,7 @@ export default function SearchPage() {
         )}
       </div>
 
-      {currentTrack && (
-        <MusicPlayer
-          song={currentTrack as any}
-          isPlaying={isPlaying}
-          setIsPlaying={setPlaying}
-          queue={queue as any}
-          currentIndex={currentIndex}
-          onSongChange={handleSongChange as any}
-        />
-      )}
+
 
       <BottomNav active="search" />
     </div>

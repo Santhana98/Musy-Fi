@@ -38,9 +38,30 @@ export async function GET(req: NextRequest) {
 
   try {
     const result = await resolveWithRetry(videoId);
-    return NextResponse.json(result);
+    const directUrl = result.directUrl;
+
+    // Fetch the raw audio stream from YouTube using the server's IP
+    const mediaResponse = await fetch(directUrl, {
+      headers: {
+        'User-Agent': req.headers.get('user-agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      }
+    });
+
+    if (!mediaResponse.ok) {
+      throw new Error(`YouTube stream request failed: ${mediaResponse.status}`);
+    }
+
+    // Pipe/proxy the response stream directly to the browser
+    return new NextResponse(mediaResponse.body, {
+      headers: {
+        'Content-Type': mediaResponse.headers.get('content-type') || 'audio/mpeg',
+        'Content-Length': mediaResponse.headers.get('content-length') || '',
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=31536000',
+      }
+    });
   } catch (err: any) {
-    console.error('[stream] All retries failed:', err.message);
+    console.error('[stream] Proxy failed:', err.message);
     return NextResponse.json({ error: 'Failed to resolve stream' }, { status: 500 });
   }
 }

@@ -3,8 +3,8 @@ import { useEffect, useState, useRef } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
-import MusicPlayer from '@/components/MusicPlayer';
 import AddSongModal from '@/components/AddSongModal';
+import { usePlayer } from '@/context/PlayerContext';
 
 export interface Song {
   id: string;
@@ -25,14 +25,11 @@ export default function Home() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [songs, setSongs] = useState<Song[]>([]);
-  const [currentSong, setCurrentSong] = useState<Song | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const { currentTrack: currentSong, isPlaying, playTrack } = usePlayer();
   const [showAddModal, setShowAddModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState<'male' | 'female'>('male');
   const [tab, setTab] = useState<Tab>('all');
-  const [queue, setQueue] = useState<Song[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -93,24 +90,14 @@ export default function Home() {
 
   const playSong = (song: Song, songList?: Song[]) => {
     const list = songList || songs;
-    setCurrentSong(song);
-    setQueue(list);
-    setCurrentIndex(list.findIndex(s => s.id === song.id));
-    setIsPlaying(true);
+    playTrack(song as any, list as any);
     // Update last played
     fetch('/api/songs/list').catch(() => {});
-  };
-
-  const handleSongChange = (song: Song) => {
-    setCurrentSong(song);
-    setCurrentIndex(queue.findIndex(s => s.id === song.id));
-    setIsPlaying(true);
   };
 
   const handleDelete = async (id: string) => {
     await fetch(`/api/songs/delete?id=${id}`, { method: 'DELETE' });
     setSongs(prev => prev.filter(s => s.id !== id));
-    if (currentSong?.id === id) { setCurrentSong(null); setIsPlaying(false); }
   };
 
   const handleToggleLike = async (id: string) => {
@@ -258,16 +245,7 @@ export default function Home() {
 
       {showAddModal && <AddSongModal onClose={() => setShowAddModal(false)} onSongAdded={handleSongAdded} />}
 
-      {currentSong && (
-        <MusicPlayer
-          song={currentSong}
-          isPlaying={isPlaying}
-          setIsPlaying={setIsPlaying}
-          queue={queue}
-          currentIndex={currentIndex}
-          onSongChange={handleSongChange}
-        />
-      )}
+
 
       <BottomNav active="home" />
     </div>

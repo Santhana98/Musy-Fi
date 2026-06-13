@@ -1,15 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Song } from '@/app/page';
-
-interface Props {
-  song: Song;
-  isPlaying: boolean;
-  setIsPlaying: (v: boolean) => void;
-  queue: Song[];
-  currentIndex: number;
-  onSongChange: (song: Song) => void;
-}
+import { usePlayer, Song } from '@/context/PlayerContext';
 
 const CACHE_NAME = 'musyfi-audio-v1';
 
@@ -34,7 +25,8 @@ async function saveToCache(videoId: string, url: string) {
   } catch { }
 }
 
-export default function MusicPlayer({ song, isPlaying, setIsPlaying, queue, currentIndex, onSongChange }: Props) {
+export default function MusicPlayer() {
+  const { currentTrack: song, isPlaying, setPlaying: setIsPlaying, queue, currentIndex, playTrack } = usePlayer();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -47,16 +39,21 @@ export default function MusicPlayer({ song, isPlaying, setIsPlaying, queue, curr
   const [cacheStatus, setCacheStatus] = useState<'none' | 'caching' | 'cached'>('none');
   const lastVideoIdRef = useRef('');
 
+  const onSongChange = (newSong: Song) => {
+    playTrack(newSong, queue);
+  };
+
   useEffect(() => {
     if (!song || lastVideoIdRef.current === song.videoId) return;
-    lastVideoIdRef.current = song.videoId;
+    lastVideoIdRef.current = song.videoId || '';
     setProgress(0);
     setDuration(0);
     setLoadingUrl(true);
     setCacheStatus('none');
 
     (async () => {
-      const cached = await getCached(song.videoId);
+      // 1. Check local Cache Storage first (Web client cache fallback)
+      const cached = await getCached(song.videoId || '');
       if (cached) {
         setStreamUrl(cached);
         setLoadingUrl(false);
@@ -64,33 +61,32 @@ export default function MusicPlayer({ song, isPlaying, setIsPlaying, queue, curr
         return;
       }
       
-      // Attempt resolving locally via YtDlp Capacitor plugin if running on Android
+      // 2. Resolve or download locally via YtDlp Capacitor plugin if running on Android
       const capacitor = (window as any).Capacitor;
-      if (capacitor?.Plugins?.YtDlp) {
+      if (capacitor?.Plugins?.YtDlp && song.youtubeUrl && song.videoId) {
         try {
-          const res = await capacitor.Plugins.YtDlp.getAudioUrl({ url: song.youtubeUrl });
+          setCacheStatus('caching');
+          const res = await capacitor.Plugins.YtDlp.downloadSong({ url: song.youtubeUrl, videoId: song.videoId });
           if (res && res.url) {
-            setStreamUrl(res.url);
+            const webviewUrl = capacitor.convertFileSrc(res.url);
+            setStreamUrl(webviewUrl);
             setLoadingUrl(false);
-            setCacheStatus('caching');
-            saveToCache(song.videoId, res.url).then(() => setCacheStatus('cached'));
+            setCacheStatus('cached');
             return;
           }
         } catch (err) {
-          console.error('[YtDlp native error] Falling back to Render resolver:', err);
+          console.error('[YtDlp native error] Falling back to proxy resolver:', err);
         }
       }
 
-      try {
-        const res = await fetch(`/api/songs/stream?videoId=${song.videoId}`);
-        const data = await res.json();
-        if (data.directUrl) {
-          setStreamUrl(data.directUrl);
-          setLoadingUrl(false);
-          setCacheStatus('caching');
-          saveToCache(song.videoId, data.directUrl).then(() => setCacheStatus('cached'));
-        }
-      } catch (e) {
+      // 3. Web client fallback: proxy streaming via Render server to prevent 403 Forbidden client-side
+      if (song.videoId) {
+        const proxyUrl = `/api/songs/stream?videoId=${song.videoId}`;
+        setStreamUrl(proxyUrl);
+        setLoadingUrl(false);
+        setCacheStatus('caching');
+        saveToCache(song.videoId, proxyUrl).then(() => setCacheStatus('cached'));
+      } else {
         setLoadingUrl(false);
       }
     })();
@@ -134,6 +130,7 @@ export default function MusicPlayer({ song, isPlaying, setIsPlaying, queue, curr
     };
   }, [song, queue, currentIndex]);
 
+
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
@@ -152,7 +149,7 @@ export default function MusicPlayer({ song, isPlaying, setIsPlaying, queue, curr
   };
 
   const handleDownload = async () => {
-    if (!streamUrl) return;
+    if (!streamUrl || !song) return;
     try {
       const res = await fetch(streamUrl);
       const blob = await res.blob();
@@ -173,6 +170,8 @@ export default function MusicPlayer({ song, isPlaying, setIsPlaying, queue, curr
   };
 
   const progressPct = duration ? (progress / duration) * 100 : 0;
+
+  if (!song) return null;
 
   return (
     <>

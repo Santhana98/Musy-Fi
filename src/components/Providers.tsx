@@ -3,6 +3,7 @@
 import React, { useEffect } from 'react';
 import { SessionProvider } from 'next-auth/react';
 import { PlayerProvider } from '@/context/PlayerContext';
+import MusicPlayer from '@/components/MusicPlayer';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -45,6 +46,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <SessionProvider>
       <PlayerProvider>
         {children}
+        <MusicPlayer />
       </PlayerProvider>
     </SessionProvider>
   );
