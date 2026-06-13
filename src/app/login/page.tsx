@@ -1,16 +1,29 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function LoginPage() {
   const router = useRouter();
+  const urlError = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('error') : null;
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(urlError || '');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (urlError) {
+      if (urlError === 'OAuthAccountNotLinked') {
+        setError('To confirm your identity, sign in with the same account you used originally.');
+      } else if (urlError === 'OAuthCallback') {
+        setError('There was a problem verifying your account with Google. Please try again.');
+      } else {
+        setError(`Authentication error: ${urlError}`);
+      }
+    }
+  }, [urlError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
