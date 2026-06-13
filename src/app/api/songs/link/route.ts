@@ -43,19 +43,36 @@ export async function POST(req: NextRequest) {
   let duration = 0;
 
   try {
-    const yt = await Innertube.create({
-      retrieve_player: false,
-      generate_session_locally: true,
-    });
-    const info = await yt.getBasicInfo(videoId);
-    title = info.basic_info.title || title;
-    artist = info.basic_info.author || artist;
-    duration = info.basic_info.duration || 0;
-    if (info.basic_info.thumbnail?.[0]?.url) {
-      thumbnail = info.basic_info.thumbnail[0].url;
+    // Fetch via YouTube's public OEmbed endpoint first to bypass datacenter blocks
+    const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+    const oembedRes = await fetch(oembedUrl);
+    if (oembedRes.ok) {
+      const oembedData = await oembedRes.json();
+      title = oembedData.title || title;
+      artist = oembedData.author_name || artist;
+      if (oembedData.thumbnail_url) {
+        thumbnail = oembedData.thumbnail_url;
+      }
+    } else {
+      throw new Error(`OEmbed returned status ${oembedRes.status}`);
     }
   } catch (e) {
-    console.warn('[link] Metadata fetch failed, using defaults:', e);
+    console.warn('[link] OEmbed fetch failed, trying Innertube:', e);
+    try {
+      const yt = await Innertube.create({
+        retrieve_player: false,
+        generate_session_locally: true,
+      });
+      const info = await yt.getBasicInfo(videoId);
+      title = info.basic_info.title || title;
+      artist = info.basic_info.author || artist;
+      duration = info.basic_info.duration || 0;
+      if (info.basic_info.thumbnail?.[0]?.url) {
+        thumbnail = info.basic_info.thumbnail[0].url;
+      }
+    } catch (innerErr) {
+      console.error('[link] Innertube basic info fetch failed too:', innerErr);
+    }
   }
 
   // Step 2: Create song record immediately — appears in library right away

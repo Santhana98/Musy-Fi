@@ -51,9 +51,8 @@ public class YtDlpPlugin extends Plugin {
         try {
             ProcessBuilder pb = new ProcessBuilder(
                 ytDlpPath,
-                "--extract-audio",
-                "--audio-format", "mp3",
-                "--get-url",
+                "-f", "bestaudio",
+                "-g",
                 youtubeUrl
             );
             

@@ -154,7 +154,7 @@ export default function Home() {
         {/* Header */}
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg,#e53935,#ff7043)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🎵</div>
+            <img src="/logo.jpg" alt="Musy-Fi Logo" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
             <span style={{ fontWeight: 900, fontSize: 18, color: '#e53935', fontFamily: 'Georgia, serif' }}>Musy-Fi</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
