@@ -40,11 +40,19 @@ export async function GET(req: NextRequest) {
   try {
     const directUrl = await getStreamUrl(videoId);
 
+    const headers: Record<string, string> = {
+      'User-Agent': req.headers.get('user-agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    };
+    
+    // Pass the Range header to YouTube for seeking support
+    const rangeHeader = req.headers.get('range');
+    if (rangeHeader) {
+      headers['Range'] = rangeHeader;
+    }
+
     // Fetch the raw audio stream from YouTube using the server's IP
     const mediaResponse = await fetch(directUrl, {
-      headers: {
-        'User-Agent': req.headers.get('user-agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      }
+      headers
     });
 
     if (!mediaResponse.ok) {
@@ -52,13 +60,21 @@ export async function GET(req: NextRequest) {
     }
 
     // Pipe/proxy the response stream directly to the browser
+    const responseHeaders: Record<string, string> = {
+      'Content-Type': mediaResponse.headers.get('content-type') || 'audio/mpeg',
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=31536000',
+    };
+
+    const contentLength = mediaResponse.headers.get('content-length');
+    if (contentLength) responseHeaders['Content-Length'] = contentLength;
+    
+    const contentRange = mediaResponse.headers.get('content-range');
+    if (contentRange) responseHeaders['Content-Range'] = contentRange;
+
     return new NextResponse(mediaResponse.body, {
-      headers: {
-        'Content-Type': mediaResponse.headers.get('content-type') || 'audio/mpeg',
-        'Content-Length': mediaResponse.headers.get('content-length') || '',
-        'Accept-Ranges': 'bytes',
-        'Cache-Control': 'public, max-age=31536000',
-      }
+      status: mediaResponse.status,
+      headers: responseHeaders
     });
   } catch (err: any) {
     console.error('[stream] Proxy failed:', err.message);
