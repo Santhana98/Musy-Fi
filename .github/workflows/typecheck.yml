@@ -1,0 +1,37 @@
+name: TypeScript Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Generate Prisma Client (mock)
+        run: npx prisma generate
+        env:
+          DATABASE_URL: "postgresql://mock:mock@localhost:5432/mock"
+          PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: "1"
+        continue-on-error: true
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+        env:
+          DATABASE_URL: "postgresql://mock:mock@localhost:5432/mock"
+
+      - name: Check passed
+        run: echo "✅ Zero TypeScript errors — safe to deploy!"

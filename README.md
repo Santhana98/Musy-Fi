@@ -152,3 +152,4 @@ Contributions, feature requests, and bug reports are welcome. Please create an i
 
 This project is intended for personal and educational use. Please ensure compliance with the terms of service of any third-party platforms or services integrated with the application.
 
+<!-- deploy trigger: 2026-06-12 11:55 UTC -->

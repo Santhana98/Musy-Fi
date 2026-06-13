@@ -7,12 +7,10 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { email, password } = body;
 
-    // 1. Basic validation
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 });
     }
 
-    // 2. Password length verification (must be at least 8 characters)
     if (password.length < 8) {
       return NextResponse.json(
         { error: 'Password must be at least 8 characters.' },
@@ -20,10 +18,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Verify user exists in database
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
+    const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
       return NextResponse.json(
@@ -32,20 +27,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // 4. Securely hash the password using PBKDF2 (assumed by NextAuth verifyPassword)
     const hashedPassword = hashPassword(password);
 
-    // 5. Update password in user model
     await prisma.user.update({
       where: { id: user.id },
       data: {
         password: hashedPassword,
-        resetToken: null,
-        resetTokenExpiry: null,
+        // resetToken and resetTokenExpiry removed — not in schema
       },
     });
-
-    console.log(`[Reset Password] Direct reset succeeded for email: ${email}`);
 
     return NextResponse.json({
       success: true,
