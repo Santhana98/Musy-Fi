@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { Innertube } from 'youtubei.js';
+import { getOrCreateYtDlpBinary } from '@/lib/ytdlp';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -43,7 +44,6 @@ export async function POST(req: NextRequest) {
   let duration = 0;
 
   try {
-    // Fetch via YouTube's public OEmbed endpoint first to bypass datacenter blocks
     const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
     const oembedRes = await fetch(oembedUrl);
     if (oembedRes.ok) {
@@ -89,46 +89,43 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Step 3: Background processing — verify stream is available
-  // Use Promise.resolve().then() instead of setImmediate for better serverless compatibility
-  Promise.resolve().then(async () => {
-    try {
-      await prisma.song.update({
-        where: { id: song.id },
-        data: { importStatus: 'processing' },
-      });
+  // Step 3: Verify stream availability BEFORE responding
+  // FIX: Do NOT use Promise.resolve().then() — it gets killed by Render after res is sent.
+  // Instead, we do the verification synchronously within this request.
+  try {
+    await prisma.song.update({
+      where: { id: song.id },
+      data: { importStatus: 'processing' },
+    });
 
-      const isWin = require('os').platform() === 'win32';
-      const binaryName = isWin ? 'yt-dlp.exe' : 'yt-dlp';
-      const binaryPath = require('path').join(require('os').tmpdir(), binaryName);
-      
-      const YTDlpWrap = require('yt-dlp-wrap').default;
-      if (!require('fs').existsSync(binaryPath)) {
-        await YTDlpWrap.downloadFromGithub(binaryPath);
-        if (!isWin) require('fs').chmodSync(binaryPath, '755');
-      }
-      const ytDlpWrap = new YTDlpWrap(binaryPath);
-      const info = await ytDlpWrap.getVideoInfo(`https://www.youtube.com/watch?v=${videoId}`);
-      const format = info.formats.reverse().find((f: any) => f.acodec !== 'none' && f.vcodec === 'none') || info.formats.reverse().find((f: any) => f.acodec !== 'none');
+    // Use the shared binary helper — it uses the bundled binary in /bin,
+    // not a fresh GitHub download every time.
+    const YTDlpWrap = require('yt-dlp-wrap').default;
+    const binaryPath = await getOrCreateYtDlpBinary();
+    const ytDlpWrap = new YTDlpWrap(binaryPath);
+    const info = await ytDlpWrap.getVideoInfo(`https://www.youtube.com/watch?v=${videoId}`);
+    const format = info.formats.reverse().find((f: any) => f.acodec !== 'none' && f.vcodec === 'none')
+      || info.formats.reverse().find((f: any) => f.acodec !== 'none');
 
-      if (format?.url) {
-        await prisma.song.update({
-          where: { id: song.id },
-          data: { importStatus: 'ready' },
-        });
-        console.log(`[link] Song ready: ${title}`);
-      } else {
-        throw new Error('No audio format found');
-      }
-    } catch (e) {
-      console.error(`[link] Background processing failed for ${videoId}:`, e);
-      // Mark as ready anyway — stream will be resolved on play
+    if (format?.url) {
       await prisma.song.update({
         where: { id: song.id },
         data: { importStatus: 'ready' },
-      }).catch(() => {});
+      });
+      console.log(`[link] Song verified and ready: ${title}`);
+    } else {
+      throw new Error('No audio format found');
     }
-  });
+  } catch (e: any) {
+    console.error(`[link] Stream verification failed for ${videoId}:`, e);
+    // Mark as ready anyway — stream endpoint will attempt resolution on play
+    await prisma.song.update({
+      where: { id: song.id },
+      data: { importStatus: 'ready', importError: e?.message || 'Verification failed' },
+    }).catch(() => {});
+  }
 
-  return NextResponse.json({ song });
+  // Re-fetch the song to return the latest status
+  const updatedSong = await prisma.song.findUnique({ where: { id: song.id } }).catch(() => song);
+  return NextResponse.json({ song: updatedSong ?? song });
 }
