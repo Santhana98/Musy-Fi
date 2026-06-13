@@ -1,33 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Innertube } from 'youtubei.js';
+import YTDlpWrap from 'yt-dlp-wrap';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
-async function resolveWithRetry(videoId: string, attempts = 3): Promise<any> {
-  for (let i = 0; i < attempts; i++) {
-    try {
-      const yt = await Innertube.create({
-        retrieve_player: true,
-        generate_session_locally: true,
-      });
-      const info = await yt.getInfo(videoId);
-      const format = info.chooseFormat({ type: 'audio', quality: 'best' });
-      if (format?.url) {
-        return {
-          directUrl: format.url,
-          title: info.basic_info.title || 'Unknown',
-          artist: info.basic_info.author || 'Unknown',
-          thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-          duration: info.basic_info.duration || 0,
-        };
-      }
-    } catch (e: any) {
-      console.warn(`[stream] Attempt ${i + 1} failed:`, e.message);
-      if (i < attempts - 1) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+let ytDlpWrap: YTDlpWrap | null = null;
+
+async function getStreamUrl(videoId: string): Promise<string> {
+  if (!ytDlpWrap) {
+    const isWin = os.platform() === 'win32';
+    const binaryName = isWin ? 'yt-dlp.exe' : 'yt-dlp';
+    const binaryPath = path.join(os.tmpdir(), binaryName);
+
+    if (!fs.existsSync(binaryPath)) {
+      await YTDlpWrap.downloadFromGithub(binaryPath);
+      if (!isWin) fs.chmodSync(binaryPath, '755');
     }
+    ytDlpWrap = new YTDlpWrap(binaryPath);
   }
-  throw new Error('All attempts failed');
+
+  const info = await ytDlpWrap.getVideoInfo(`https://www.youtube.com/watch?v=${videoId}`);
+  const format = info.formats.reverse().find((f: any) => f.acodec !== 'none' && f.vcodec === 'none') || info.formats.reverse().find((f: any) => f.acodec !== 'none');
+  
+  if (!format || !format.url) {
+    throw new Error('No audio format found');
+  }
+  return format.url;
 }
 
 export async function GET(req: NextRequest) {
@@ -37,8 +38,7 @@ export async function GET(req: NextRequest) {
   if (!videoId) return NextResponse.json({ error: 'videoId required' }, { status: 400 });
 
   try {
-    const result = await resolveWithRetry(videoId);
-    const directUrl = result.directUrl;
+    const directUrl = await getStreamUrl(videoId);
 
     // Fetch the raw audio stream from YouTube using the server's IP
     const mediaResponse = await fetch(directUrl, {

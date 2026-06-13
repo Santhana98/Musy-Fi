@@ -98,12 +98,18 @@ export async function POST(req: NextRequest) {
         data: { importStatus: 'processing' },
       });
 
-      const yt = await Innertube.create({
-        retrieve_player: true,
-        generate_session_locally: true,
-      });
-      const info = await yt.getInfo(videoId);
-      const format = info.chooseFormat({ type: 'audio', quality: 'best' });
+      const isWin = require('os').platform() === 'win32';
+      const binaryName = isWin ? 'yt-dlp.exe' : 'yt-dlp';
+      const binaryPath = require('path').join(require('os').tmpdir(), binaryName);
+      
+      const YTDlpWrap = require('yt-dlp-wrap').default;
+      if (!require('fs').existsSync(binaryPath)) {
+        await YTDlpWrap.downloadFromGithub(binaryPath);
+        if (!isWin) require('fs').chmodSync(binaryPath, '755');
+      }
+      const ytDlpWrap = new YTDlpWrap(binaryPath);
+      const info = await ytDlpWrap.getVideoInfo(`https://www.youtube.com/watch?v=${videoId}`);
+      const format = info.formats.reverse().find((f: any) => f.acodec !== 'none' && f.vcodec === 'none') || info.formats.reverse().find((f: any) => f.acodec !== 'none');
 
       if (format?.url) {
         await prisma.song.update({
