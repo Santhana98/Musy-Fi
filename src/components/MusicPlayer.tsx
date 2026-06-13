@@ -63,6 +63,24 @@ export default function MusicPlayer({ song, isPlaying, setIsPlaying, queue, curr
         setCacheStatus('cached');
         return;
       }
+      
+      // Attempt resolving locally via YtDlp Capacitor plugin if running on Android
+      const capacitor = (window as any).Capacitor;
+      if (capacitor?.Plugins?.YtDlp) {
+        try {
+          const res = await capacitor.Plugins.YtDlp.getAudioUrl({ url: song.youtubeUrl });
+          if (res && res.url) {
+            setStreamUrl(res.url);
+            setLoadingUrl(false);
+            setCacheStatus('caching');
+            saveToCache(song.videoId, res.url).then(() => setCacheStatus('cached'));
+            return;
+          }
+        } catch (err) {
+          console.error('[YtDlp native error] Falling back to Render resolver:', err);
+        }
+      }
+
       try {
         const res = await fetch(`/api/songs/stream?videoId=${song.videoId}`);
         const data = await res.json();

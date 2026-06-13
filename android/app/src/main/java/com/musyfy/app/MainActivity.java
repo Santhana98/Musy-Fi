@@ -1,4 +1,4 @@
-package com.musyfi.app;
+package com.musyfy.app;
 
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
