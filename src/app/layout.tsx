@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { Providers } from './providers';
+import Providers from '@/components/Providers';
 
 export const metadata: Metadata = {
   title: 'Musy-Fi',
