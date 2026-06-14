@@ -1,30 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import YTDlpWrap from 'yt-dlp-wrap';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
+import { getOrCreateYtDlpBinary } from '@/lib/ytdlp';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
+// FIX: Module-level cache — survives across requests on the same instance.
+// The binary path is resolved once using the shared helper (bundled binary in /bin,
+// copied to /tmp on first use). No more GitHub downloads on every cold start.
 let ytDlpWrap: YTDlpWrap | null = null;
 
+async function getOrInitYtDlp(): Promise<YTDlpWrap> {
+  if (ytDlpWrap) return ytDlpWrap;
+  const binaryPath = await getOrCreateYtDlpBinary();
+  ytDlpWrap = new YTDlpWrap(binaryPath);
+  return ytDlpWrap;
+}
+
 async function getStreamUrl(videoId: string): Promise<string> {
-  if (!ytDlpWrap) {
-    const isWin = os.platform() === 'win32';
-    const binaryName = isWin ? 'yt-dlp.exe' : 'yt-dlp';
-    const binaryPath = path.join(os.tmpdir(), binaryName);
+  const wrap = await getOrInitYtDlp();
+  const info = await wrap.getVideoInfo(`https://www.youtube.com/watch?v=${videoId}`);
+  const format =
+    info.formats.reverse().find((f: any) => f.acodec !== 'none' && f.vcodec === 'none') ||
+    info.formats.reverse().find((f: any) => f.acodec !== 'none');
 
-    if (!fs.existsSync(binaryPath)) {
-      await YTDlpWrap.downloadFromGithub(binaryPath);
-      if (!isWin) fs.chmodSync(binaryPath, '755');
-    }
-    ytDlpWrap = new YTDlpWrap(binaryPath);
-  }
-
-  const info = await ytDlpWrap.getVideoInfo(`https://www.youtube.com/watch?v=${videoId}`);
-  const format = info.formats.reverse().find((f: any) => f.acodec !== 'none' && f.vcodec === 'none') || info.formats.reverse().find((f: any) => f.acodec !== 'none');
-  
   if (!format || !format.url) {
     throw new Error('No audio format found');
   }
@@ -41,44 +40,42 @@ export async function GET(req: NextRequest) {
     const directUrl = await getStreamUrl(videoId);
 
     const headers: Record<string, string> = {
-      'User-Agent': req.headers.get('user-agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'User-Agent':
+        req.headers.get('user-agent') ||
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     };
-    
-    // Pass the Range header to YouTube for seeking support
+
     const rangeHeader = req.headers.get('range');
     if (rangeHeader) {
       headers['Range'] = rangeHeader;
     }
 
-    // Fetch the raw audio stream from YouTube using the server's IP
-    const mediaResponse = await fetch(directUrl, {
-      headers
-    });
+    const mediaResponse = await fetch(directUrl, { headers });
 
     if (!mediaResponse.ok) {
+      // FIX: Reset the wrap instance on failure so a stale binary path doesn't block recovery
+      ytDlpWrap = null;
       throw new Error(`YouTube stream request failed: ${mediaResponse.status}`);
     }
 
-    // Pipe/proxy the response stream directly to the browser
     const responseHeaders: Record<string, string> = {
       'Content-Type': mediaResponse.headers.get('content-type') || 'audio/mpeg',
       'Accept-Ranges': 'bytes',
-      'Cache-Control': 'public, max-age=31536000',
+      'Cache-Control': 'public, max-age=3600',
     };
 
     const contentLength = mediaResponse.headers.get('content-length');
     if (contentLength) responseHeaders['Content-Length'] = contentLength;
-    
+
     const contentRange = mediaResponse.headers.get('content-range');
     if (contentRange) responseHeaders['Content-Range'] = contentRange;
 
     return new NextResponse(mediaResponse.body, {
       status: mediaResponse.status,
-      headers: responseHeaders
+      headers: responseHeaders,
     });
   } catch (err: any) {
     console.error('[stream] Proxy failed:', err.message);
-    return NextResponse.json({ error: 'Failed to resolve stream' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to resolve stream', detail: err.message }, { status: 500 });
   }
 }
-
