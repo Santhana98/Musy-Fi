@@ -83,6 +83,7 @@ public class YtDlpPlugin extends Plugin {
             call.resolve(result);
             
         } catch (Exception e) {
+            android.util.Log.e("YTDLP", "Execution failed", e);
             call.reject("Error: " + e.getMessage());
         }
     }
