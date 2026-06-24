@@ -25,7 +25,7 @@ export default function Home() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [songs, setSongs] = useState<Song[]>([]);
-  const { currentTrack: currentSong, isPlaying, playTrack } = usePlayer();
+  const { currentTrack: currentSong, isPlaying, playTrack, setPlaying } = usePlayer();
   const [showAddModal, setShowAddModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState<'male' | 'female'>('male');
@@ -99,6 +99,38 @@ export default function Home() {
   };
 
   const handleDelete = async (id: string) => {
+    const songToDelete = songs.find(s => s.id === id);
+    if (songToDelete) {
+      // 1. Handle active playing file lock release if deleting currently playing song
+      if (currentSong && currentSong.id === id) {
+        const audioEl = document.querySelector('audio');
+        if (audioEl) {
+          try {
+            audioEl.pause();
+            audioEl.src = '';
+            audioEl.load();
+            console.log('[MUSY_DEBUG] Stopped playback and released file lock for deleted track');
+          } catch (domErr) {
+            console.error('[MUSY_DEBUG] Failed to release audio file lock in DOM:', domErr);
+          }
+        }
+        setPlaying(false);
+      }
+
+      // 2. Trigger native file deletion
+      try {
+        const YtDlp = (window as any).Capacitor?.Plugins?.YtDlp;
+        if (YtDlp) {
+          console.log('[MUSY_DEBUG] Calling native deleteSong for:', songToDelete.videoId);
+          const delRes = await YtDlp.deleteSong({ videoId: songToDelete.videoId });
+          console.log('[MUSY_DEBUG] deleteSong response:', delRes);
+        }
+      } catch (err) {
+        console.error('[MUSY_DEBUG] Failed to delete native audio file:', err);
+      }
+    }
+
+    // 3. Clear database record and update UI state immediately
     await fetch(`/api/songs/delete?id=${id}`, { method: 'DELETE' });
     setSongs(prev => prev.filter(s => s.id !== id));
   };
