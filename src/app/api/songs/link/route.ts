@@ -3,7 +3,6 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { Innertube } from 'youtubei.js';
-import { getOrCreateYtDlpBinary } from '@/lib/ytdlp';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -85,46 +84,9 @@ export async function POST(req: NextRequest) {
       youtubeUrl,
       videoId,
       duration,
-      importStatus: 'pending',
+      importStatus: 'ready',
     },
   });
 
-  // Step 3: Verify stream availability BEFORE responding
-  // FIX: Do NOT use Promise.resolve().then() — it gets killed by Render after res is sent.
-  // Instead, we do the verification synchronously within this request.
-  try {
-    await prisma.song.update({
-      where: { id: song.id },
-      data: { importStatus: 'processing' },
-    });
-
-    // Use the shared binary helper — it uses the bundled binary in /bin,
-    // not a fresh GitHub download every time.
-    const YTDlpWrap = require('yt-dlp-wrap').default;
-    const binaryPath = await getOrCreateYtDlpBinary();
-    const ytDlpWrap = new YTDlpWrap(binaryPath);
-    const info = await ytDlpWrap.getVideoInfo(`https://www.youtube.com/watch?v=${videoId}`);
-    const format = info.formats.reverse().find((f: any) => f.acodec !== 'none' && f.vcodec === 'none')
-      || info.formats.reverse().find((f: any) => f.acodec !== 'none');
-
-    if (format?.url) {
-      await prisma.song.update({
-        where: { id: song.id },
-        data: { importStatus: 'ready' },
-      });
-      console.log(`[link] Song verified and ready: ${title}`);
-    } else {
-      throw new Error('No audio format found');
-    }
-  } catch (e: any) {
-    console.error(`[link] Stream verification failed for ${videoId}:`, e);
-    // Mark as ready anyway — stream endpoint will attempt resolution on play
-    await prisma.song.update({
-  where: { id: song.id },
-  data: { importStatus: 'ready' },
-}).catch(() => {});
-}
-  // Re-fetch the song to return the latest status
-  const updatedSong = await prisma.song.findUnique({ where: { id: song.id } }).catch(() => song);
-  return NextResponse.json({ song: updatedSong ?? song });
+  return NextResponse.json({ song });
 }

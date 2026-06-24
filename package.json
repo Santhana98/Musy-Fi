@@ -21,8 +21,7 @@
     "next-auth": "^4.24.14",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "youtubei.js": "^17.0.1",
-    "yt-dlp-wrap": "^2.3.12"
+    "youtubei.js": "^17.0.1"
   },
   "devDependencies": {
     "@capacitor/android": "^8.4.0",

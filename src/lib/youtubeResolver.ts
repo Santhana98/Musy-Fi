@@ -1,5 +1,4 @@
 import { Readable } from 'stream';
-import { getYtDlpDirectUrl, getYtDlpAudioStream, getYtDlpMetadata } from './ytdlp';
 import { Innertube, Platform } from 'youtubei.js';
 
 // Global logs capture for remote debugging on Render
@@ -166,22 +165,6 @@ export async function resolveYoutubeMetadata(url: string): Promise<YoutubeMetada
     }
   }
 
-  // 4. Try yt-dlp
-  if (!title || !duration) {
-    try {
-      console.log(`[youtubeResolver] Fetching metadata via yt-dlp: ${url}`);
-      const data = await getYtDlpMetadata(url);
-      if (data) {
-        if (!title) title = data.title || '';
-        if (!artist) artist = data.uploader || '';
-        if (!duration) duration = data.duration || 0;
-        if (!thumbnail) thumbnail = data.thumbnail || '';
-      }
-    } catch (err: any) {
-      console.warn(`[youtubeResolver] yt-dlp metadata resolution failed:`, err.message);
-    }
-  }
-
   // 5. Try Piped
   if (!title || !duration) {
     for (const instance of PIPED_INSTANCES) {
@@ -233,17 +216,6 @@ export async function resolveYoutubeAudioStream(url: string): Promise<Readable> 
     }
   } catch (err: any) {
     console.warn(`[youtubeResolver] youtubei.js streaming failed:`, err.message);
-  }
-
-  // Try yt-dlp fallback (extremely reliable, native stream)
-  try {
-    console.log(`[youtubeResolver] Requesting audio stream via yt-dlp: ${url}`);
-    const stream = await getYtDlpAudioStream(url);
-    if (stream) {
-      return stream;
-    }
-  } catch (err: any) {
-    console.warn(`[youtubeResolver] yt-dlp streaming failed:`, err.message);
   }
 
   // 2. Try Cobalt first (often converts to MP3/M4A directly and serves fast)
@@ -354,17 +326,6 @@ export async function resolveYoutubeDirectUrl(url: string): Promise<string> {
     }
   } catch (err: any) {
     console.warn(`[youtubeResolver] youtubei.js direct URL resolution failed:`, err.message);
-  }
-
-  // Try yt-dlp fallback (extremely reliable, cached)
-  try {
-    console.log(`[youtubeResolver] Resolving direct URL via yt-dlp: ${url}`);
-    const directUrl = await getYtDlpDirectUrl(url);
-    if (directUrl) {
-      return directUrl;
-    }
-  } catch (err: any) {
-    console.warn(`[youtubeResolver] yt-dlp direct URL resolution failed:`, err.message);
   }
 
   // Try Cobalt first

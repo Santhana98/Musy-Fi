@@ -139,16 +139,8 @@ export default function MusicPlayer() {
           console.error('[MUSY_DEBUG] YtDlp plugin operation failed', err);
         }
       }
-      // 3. Web client fallback: proxy streaming via Render server to prevent 403 Forbidden client-side
-      if (song.videoId) {
-        const proxyUrl = `/api/songs/stream?videoId=${song.videoId}`;
-        setStreamUrl(proxyUrl);
-        setLoadingUrl(false);
-        setCacheStatus('caching');
-        saveToCache(song.videoId, proxyUrl).then(() => setCacheStatus('cached'));
-      } else {
-        setLoadingUrl(false);
-      }
+         // Architecture 2 removed
+         setLoadingUrl(false);
     })();
   }, [song?.videoId]);
 
