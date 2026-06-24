@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'public',
 
   server: {
-    url: 'http://192.168.29.50:3000',
+    url: 'https://musy-fi.onrender.com',
     cleartext: true
   }
 };
