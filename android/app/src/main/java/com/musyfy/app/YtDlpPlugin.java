@@ -272,4 +272,40 @@ public class YtDlpPlugin extends Plugin {
             }
         }).start();
     }
+    @PluginMethod
+    public void deleteSong(PluginCall call) {
+        Log.d(TAG, "deleteSong called");
+        String videoId = call.getString("videoId");
+
+        if (videoId == null || videoId.isEmpty()) {
+            call.reject("videoId is required");
+            return;
+        }
+
+        try {
+            File localFile = new File(
+                    getContext().getFilesDir(),
+                    videoId + ".m4a"
+            );
+
+            JSObject result = new JSObject();
+            if (localFile.exists()) {
+                boolean deleted = localFile.delete();
+                result.put("deleted", deleted);
+                result.put("message", "File deleted successfully");
+                Log.d(TAG, "Deleted local file: " + localFile.getAbsolutePath() + " -> " + deleted);
+            } else {
+                result.put("deleted", false);
+                result.put("message", "File does not exist (nothing to delete)");
+                Log.d(TAG, "File did not exist, skipped deletion: " + localFile.getAbsolutePath());
+            }
+
+            call.resolve(result);
+
+        } catch (Exception e) {
+            Log.e(TAG, "deleteSong failed", e);
+            call.reject("Error deleting file: " + e.getMessage());
+        }
+    }
 }
+
