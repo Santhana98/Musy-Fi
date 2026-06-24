@@ -120,11 +120,10 @@ export async function POST(req: NextRequest) {
     console.error(`[link] Stream verification failed for ${videoId}:`, e);
     // Mark as ready anyway — stream endpoint will attempt resolution on play
     await prisma.song.update({
-      where: { id: song.id },
-      data: { importStatus: 'ready'},
-    }).catch(() => {});
-  }
-
+  where: { id: song.id },
+  data: { importStatus: 'ready' },
+}).catch(() => {});
+}
   // Re-fetch the song to return the latest status
   const updatedSong = await prisma.song.findUnique({ where: { id: song.id } }).catch(() => song);
   return NextResponse.json({ song: updatedSong ?? song });
