@@ -38,6 +38,15 @@ export default function MusicPlayer() {
   const [loadingUrl, setLoadingUrl] = useState(false);
   const [cacheStatus, setCacheStatus] = useState<'none' | 'caching' | 'cached'>('none');
   const lastVideoIdRef = useRef('');
+  const objectUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+      }
+    };
+  }, []);
 
   const onSongChange = (newSong: Song) => {
     playTrack(newSong, queue);
@@ -51,10 +60,22 @@ export default function MusicPlayer() {
     setLoadingUrl(true);
     setCacheStatus('none');
 
+    // Revoke previous object URL if exists
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+
     (async () => {
+      console.log('[MUSY_DEBUG] Effect running');
+      console.log('[MUSY_DEBUG] song=', song);
+      console.log('[MUSY_DEBUG] youtubeUrl=', song?.youtubeUrl);
+      console.log('[MUSY_DEBUG] videoId=', song?.videoId);
+
       // 1. Check local Cache Storage first (Web client cache fallback)
       const cached = await getCached(song.videoId || '');
       if (cached) {
+        objectUrlRef.current = cached;
         setStreamUrl(cached);
         setLoadingUrl(false);
         setCacheStatus('cached');
@@ -63,22 +84,61 @@ export default function MusicPlayer() {
       
       // 2. Resolve or download locally via YtDlp Capacitor plugin if running on Android
       const capacitor = (window as any).Capacitor;
+      console.log(
+        '[MUSY_DEBUG] hasPlugin=',
+        !!capacitor?.Plugins?.YtDlp
+      );
       if (capacitor?.Plugins?.YtDlp && song.youtubeUrl && song.videoId) {
         try {
-          setCacheStatus('caching');
-          const res = await capacitor.Plugins.YtDlp.downloadSong({ url: song.youtubeUrl, videoId: song.videoId });
-          if (res && res.url) {
-            const webviewUrl = capacitor.convertFileSrc(res.url);
-            setStreamUrl(webviewUrl);
-            setLoadingUrl(false);
+          console.log('[MUSY_DEBUG] Checking cache status for videoId:', song.videoId);
+          const statusRes = await capacitor.Plugins.YtDlp.checkDownloadStatus({ videoId: song.videoId });
+          console.log('[MUSY_DEBUG] checkDownloadStatus result:', statusRes);
+
+          let filePath = '';
+          if (statusRes && statusRes.isDownloaded) {
+            console.log('[MUSY_DEBUG] Cache hit! Skipping download. Local path:', statusRes.localPath);
             setCacheStatus('cached');
-            return;
+            filePath = statusRes.url;
+          } else {
+            console.log('[MUSY_DEBUG] Cache miss! Calling downloadSong');
+            setCacheStatus('caching');
+            const downloadRes = await capacitor.Plugins.YtDlp.downloadSong({ url: song.youtubeUrl, videoId: song.videoId });
+            console.log('[MUSY_DEBUG] downloadSong result:', downloadRes);
+            if (downloadRes && downloadRes.url) {
+              if (downloadRes.status === 'exists') {
+                console.log('[MUSY_DEBUG] Native reported file exists during download fallback');
+              } else {
+                console.log('[MUSY_DEBUG] Download completed successfully');
+              }
+              filePath = downloadRes.url;
+            }
+          }
+
+          if (filePath) {
+            const webviewUrl = capacitor.convertFileSrc(filePath);
+            console.log('[MUSY_DEBUG] WebView URL:', webviewUrl);
+
+            try {
+              const response = await fetch(webviewUrl);
+              const blob = await response.blob();
+              const blobUrl = URL.createObjectURL(blob);
+              objectUrlRef.current = blobUrl;
+              console.log('[MUSY_DEBUG] BLOB OBJECT URL:', blobUrl);
+              setStreamUrl(blobUrl);
+              setLoadingUrl(false);
+              setCacheStatus('cached');
+              return;
+            } catch (fetchErr) {
+              console.error(
+                '[MUSY_DEBUG] Fetching local blob failed, falling back to stream proxy',
+                fetchErr
+              );
+            }
           }
         } catch (err) {
-          console.error('[YtDlp native error] Falling back to proxy resolver:', err);
+          console.error('[MUSY_DEBUG] YtDlp plugin operation failed', err);
         }
       }
-
       // 3. Web client fallback: proxy streaming via Render server to prevent 403 Forbidden client-side
       if (song.videoId) {
         const proxyUrl = `/api/songs/stream?videoId=${song.videoId}`;
@@ -91,6 +151,10 @@ export default function MusicPlayer() {
       }
     })();
   }, [song?.videoId]);
+
+  useEffect(() => {
+    console.log('[MUSY_DEBUG] STREAM URL:', streamUrl);
+  }, [streamUrl]);
 
   useEffect(() => {
     if (!audioRef.current || !streamUrl) return;

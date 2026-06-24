@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
     // Mark as ready anyway — stream endpoint will attempt resolution on play
     await prisma.song.update({
       where: { id: song.id },
-      data: { importStatus: 'ready', importError: e?.message || 'Verification failed' },
+      data: { importStatus: 'ready'},
     }).catch(() => {});
   }
 

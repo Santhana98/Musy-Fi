@@ -4,9 +4,9 @@ const config: CapacitorConfig = {
   appId: 'com.musyfy.app',
   appName: 'Musyfy',
   webDir: 'public',
+
   server: {
-    // This points the mobile app to your 24/7 free cloud server on Render
-    url: 'https://musy-fi.onrender.com',
+    url: 'http://192.168.29.50:3000',
     cleartext: true
   }
 };
