@@ -168,10 +168,18 @@ export default function Home() {
   const pendingCount = songs.filter(s => s.importStatus === 'pending' || s.importStatus === 'processing').length;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0a0a', paddingBottom: 160 }}>
+    <div style={{
+      minHeight: '100vh',
+      backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(10,10,10,0.95) 100%), url(${bgImage})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center top',
+      backgroundAttachment: 'fixed',
+      paddingBottom: 160,
+      color: '#fff'
+    }}>
       {/* Hero */}
-      <div style={{ position: 'relative', minHeight: 300, overflow: 'hidden', backgroundImage: `url(${bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center top' }}>
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(10,10,10,0.8) 70%, #0a0a0a 100%)' }} />
+      <div style={{ position: 'relative', minHeight: 240, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(10,10,10,0.4) 100%)' }} />
 
         {/* Header */}
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px' }}>

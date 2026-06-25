@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { usePlayer, Song } from '@/context/PlayerContext';
+import VinylPlayer from './VinylPlayer';
 
 const CACHE_NAME = 'musyfi-audio-v1';
 
@@ -244,7 +245,7 @@ export default function MusicPlayer() {
       {isExpanded && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 200,
-          background: 'linear-gradient(160deg, #1a0505 0%, #0d0d0d 100%)',
+          background: 'radial-gradient(circle at center, #141416 0%, #080809 100%)',
           display: 'flex', flexDirection: 'column', padding: '20px',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
@@ -254,12 +255,7 @@ export default function MusicPlayer() {
           </div>
 
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
-            <div style={{ width: 260, height: 260, borderRadius: 20, overflow: 'hidden', background: '#1a1a1a', boxShadow: '0 20px 60px rgba(229,57,53,0.3)', border: '2px solid rgba(229,57,53,0.2)' }}>
-              {song.thumbnail
-                ? <img src={song.thumbnail} alt={song.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 80 }}>🎵</div>
-              }
-            </div>
+            <VinylPlayer currentTrack={song} isPlaying={isPlaying} />
           </div>
 
           <div style={{ marginBottom: 24 }}>
