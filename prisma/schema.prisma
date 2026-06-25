@@ -17,6 +17,7 @@ model User {
   accounts      Account[]
   sessions      Session[]
   songs         Song[]
+  playlists     Playlist[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -71,6 +72,7 @@ model Song {
   driveFileId  String?
   addedAt      DateTime     @default(now())
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlistSongs PlaylistSong[]
 }
 
 enum ImportStatus {
@@ -78,4 +80,28 @@ enum ImportStatus {
   processing
   ready
   failed
+}
+
+model Playlist {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  coverImage  String?
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  songs       PlaylistSong[]
+}
+
+model PlaylistSong {
+  playlistId String
+  songId     String
+  position   Int
+
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  song       Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@id([playlistId, songId])
 }

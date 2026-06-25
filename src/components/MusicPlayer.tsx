@@ -27,7 +27,10 @@ async function saveToCache(videoId: string, url: string) {
 }
 
 export default function MusicPlayer() {
-  const { currentTrack: song, isPlaying, setPlaying: setIsPlaying, queue, currentIndex, playTrack } = usePlayer();
+  const { 
+    currentTrack: song, isPlaying, setPlaying: setIsPlaying, queue, currentIndex, playTrack,
+    removeFromQueue, clearQueue, setQueue 
+  } = usePlayer();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -38,8 +41,17 @@ export default function MusicPlayer() {
   const [streamUrl, setStreamUrl] = useState('');
   const [loadingUrl, setLoadingUrl] = useState(false);
   const [cacheStatus, setCacheStatus] = useState<'none' | 'caching' | 'cached'>('none');
+  const [showQueue, setShowQueue] = useState(false);
   const lastVideoIdRef = useRef('');
   const objectUrlRef = useRef<string | null>(null);
+
+  const moveQueueItem = (fromIdx: number, toIdx: number) => {
+    if (toIdx < 0 || toIdx >= queue.length) return;
+    const newQueue = [...queue];
+    const [moved] = newQueue.splice(fromIdx, 1);
+    newQueue.splice(toIdx, 0, moved);
+    setQueue(newQueue);
+  };
 
   useEffect(() => {
     return () => {
@@ -250,12 +262,62 @@ export default function MusicPlayer() {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
             <button onClick={() => setIsExpanded(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: 24, cursor: 'pointer' }}>⌄</button>
-            <span style={{ color: '#888', fontSize: 12, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' }}>Now Playing</span>
-            <button onClick={handleDownload} style={{ background: 'none', border: 'none', color: '#e53935', fontSize: 20, cursor: 'pointer' }} title="Download MP3">⬇</button>
+            <span style={{ color: '#888', fontSize: 12, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' }}>{showQueue ? 'Queue' : 'Now Playing'}</span>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <button onClick={() => setShowQueue(!showQueue)} style={{ background: 'none', border: 'none', color: showQueue ? '#e53935' : '#888', fontSize: 18, cursor: 'pointer' }} title="Toggle Queue">☷</button>
+              <button onClick={handleDownload} style={{ background: 'none', border: 'none', color: '#e53935', fontSize: 20, cursor: 'pointer' }} title="Download MP3">⬇</button>
+            </div>
           </div>
 
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
-            <VinylPlayer currentTrack={song} isPlaying={isPlaying} />
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 32, width: '100%', minHeight: 0 }}>
+            {showQueue ? (
+              <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', overflowY: 'auto', padding: '0 8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <h3 style={{ color: '#fff', fontSize: 16, fontWeight: 800 }}>Play Queue</h3>
+                  <button onClick={clearQueue} style={{ background: 'none', border: 'none', color: '#e53935', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Clear Queue</button>
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <p style={{ color: '#666', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, textAlign: 'left' }}>Now Playing</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 10 }}>
+                    <img src={song.thumbnail || '/logo.jpg'} style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover' }} />
+                    <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#e53935', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.title}</div>
+                      <div style={{ color: '#888', fontSize: 12, marginTop: 2 }}>{song.artist || 'Unknown'}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'left' }}>
+                  <p style={{ color: '#666', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Next Up ({queue.length - currentIndex - 1})</p>
+                  {queue.length - currentIndex - 1 <= 0 ? (
+                    <p style={{ color: '#444', fontSize: 13, fontStyle: 'italic', padding: '10px 0', textAlign: 'center' }}>Queue is empty</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {queue.slice(currentIndex + 1).map((track, i) => {
+                        const actualIndex = currentIndex + 1 + i;
+                        return (
+                          <div key={track.id + '-' + actualIndex} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', borderRadius: 8, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.02)' }}>
+                            <img src={track.thumbnail || '/logo.jpg'} style={{ width: 34, height: 34, borderRadius: 4, objectFit: 'cover' }} />
+                            <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => playTrack(track)}>
+                              <div style={{ fontWeight: 600, fontSize: 13, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</div>
+                              <div style={{ color: '#666', fontSize: 11, marginTop: 1 }}>{track.artist || 'Unknown'}</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                              <button onClick={() => moveQueueItem(actualIndex, actualIndex - 1)} disabled={actualIndex === currentIndex + 1} style={{ background: 'none', border: 'none', color: actualIndex === currentIndex + 1 ? '#222' : '#888', cursor: 'pointer', fontSize: 12, padding: '4px' }}>▲</button>
+                              <button onClick={() => moveQueueItem(actualIndex, actualIndex + 1)} disabled={actualIndex === queue.length - 1} style={{ background: 'none', border: 'none', color: actualIndex === queue.length - 1 ? '#222' : '#888', cursor: 'pointer', fontSize: 12, padding: '4px' }}>▼</button>
+                              <button onClick={() => removeFromQueue(track.id)} style={{ background: 'none', border: 'none', color: '#ff4444', cursor: 'pointer', fontSize: 12, padding: '4px 6px' }}>✕</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <VinylPlayer currentTrack={song} isPlaying={isPlaying} />
+            )}
           </div>
 
           <div style={{ marginBottom: 24 }}>

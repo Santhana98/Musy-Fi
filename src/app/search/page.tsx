@@ -4,6 +4,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
 import { usePlayer, Song } from '@/context/PlayerContext';
+import SongRow from '@/components/SongRow';
 
 export default function SearchPage() {
   const { data: session, status } = useSession();
@@ -13,19 +14,90 @@ export default function SearchPage() {
     isPlaying,
     setPlaying,
     songs,
+    setSongs,
     playTrack,
-    currentIndex,
-    queue,
   } = usePlayer();
 
   const [query, setQuery] = useState('');
   const [theme, setTheme] = useState<'male' | 'female'>('male');
+  const [playlists, setPlaylists] = useState<any[]>([]);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login');
     const savedTheme = localStorage.getItem('musyfi-theme') as 'male' | 'female';
     if (savedTheme) setTheme(savedTheme);
   }, [status]);
+
+  useEffect(() => {
+    if (session) {
+      fetchPlaylists();
+    }
+  }, [session]);
+
+  const fetchPlaylists = async () => {
+    try {
+      const res = await fetch('/api/playlists');
+      if (res.ok) {
+        const data = await res.json();
+        setPlaylists(data.playlists || []);
+      }
+    } catch (err) {
+      console.error('Error fetching playlists:', err);
+    }
+  };
+
+  const handleAddToPlaylist = async (playlistId: string, songId: string) => {
+    try {
+      const res = await fetch(`/api/playlists/${playlistId}/songs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ songId }),
+      });
+      if (res.ok) {
+        alert('Song added to playlist!');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleToggleLike = async (id: string) => {
+    const res = await fetch('/api/songs/favorite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    setSongs(prev => prev.map(s => s.id === id ? { ...s, liked: data.liked } : s));
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this track from your library?')) return;
+    const songToDelete = songs.find(s => s.id === id);
+    if (songToDelete) {
+      if (currentTrack && currentTrack.id === id) {
+        const audioEl = document.querySelector('audio');
+        if (audioEl) {
+          try {
+            audioEl.pause();
+            audioEl.src = '';
+            audioEl.load();
+          } catch {}
+        }
+        setPlaying(false);
+      }
+      try {
+        const YtDlp = (window as any).Capacitor?.Plugins?.YtDlp;
+        if (YtDlp) {
+          await YtDlp.deleteSong({ videoId: songToDelete.videoId });
+        }
+      } catch (err) {
+        console.error('Failed native delete:', err);
+      }
+    }
+    await fetch(`/api/songs/delete?id=${id}`, { method: 'DELETE' });
+    setSongs(prev => prev.filter(s => s.id !== id));
+  };
 
   const bgImage = theme === 'male' ? '/bg-male.jpg' : '/bg-female.jpg';
 
@@ -35,10 +107,6 @@ export default function SearchPage() {
         (s.artist && s.artist.toLowerCase().includes(query.toLowerCase()))
       )
     : [];
-
-  const handleSongChange = (song: Song) => {
-    playTrack(song, filteredSongs);
-  };
 
   const handlePlaySong = (song: Song) => {
     playTrack(song, filteredSongs);
@@ -89,12 +157,17 @@ export default function SearchPage() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {filteredSongs.map((song, i) => (
-                  <SearchSongRow
+                  <SongRow
                     key={song.id}
                     song={song}
+                    index={i}
                     isActive={currentTrack?.id === song.id}
                     isPlaying={isPlaying && currentTrack?.id === song.id}
                     onClick={() => handlePlaySong(song)}
+                    onDelete={() => handleDelete(song.id)}
+                    onToggleLike={() => handleToggleLike(song.id)}
+                    playlists={playlists}
+                    onAddToPlaylist={handleAddToPlaylist}
                   />
                 ))}
               </div>
@@ -108,46 +181,7 @@ export default function SearchPage() {
         )}
       </div>
 
-
-
       <BottomNav active="search" />
-    </div>
-  );
-}
-
-function SearchSongRow({ song, isActive, isPlaying, onClick }: {
-  song: Song; isActive: boolean; isPlaying: boolean; onClick: () => void;
-}) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '10px 12px',
-        borderRadius: 10,
-        cursor: 'pointer',
-        background: isActive ? 'rgba(229,57,53,0.1)' : 'transparent',
-        border: isActive ? '1px solid rgba(229,57,53,0.2)' : '1px solid transparent',
-      }}
-      onClick={onClick}
-    >
-      <div style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', flexShrink: 0, background: '#1a1a1a', position: 'relative' }}>
-        {song.thumbnail ? (
-          <img src={song.thumbnail} alt={song.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        ) : (
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🎵</div>
-        )}
-        {isActive && (
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(229,57,53,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: 16, color: '#fff' }}>{isPlaying ? '▶' : '⏸'}</span>
-          </div>
-        )}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: isActive ? '#e53935' : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.title}</div>
-        <div style={{ color: '#555', fontSize: 12, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.artist || 'Unknown Artist'}</div>
-      </div>
     </div>
   );
 }
